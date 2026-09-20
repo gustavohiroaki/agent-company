@@ -99,6 +99,37 @@ describe('Store persistence', () => {
     assert.deepEqual(index.agents[0].appearance, original.agents[0].appearance);
   });
 
+  it('round-trips an optional custom brand while legacy configs keep the built-in skin', async () => {
+    const root = await tempRoot();
+    const store = new Store(root);
+    const legacy = defaults(root);
+
+    assert.equal(legacy.branding, undefined);
+    assert.doesNotThrow(() => validateConfig(legacy));
+
+    const branded = defaults(root);
+    branded.branding = {
+      primaryColor: '#1A73E8',
+      secondaryColor: '#16213A',
+      logoDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+    };
+    await store.save(branded);
+
+    const loaded = await store.load();
+    assert.deepEqual(loaded.branding, branded.branding);
+    const index = YAML.parse(await readFile(path.join(root, '.agent-office', 'team.yaml'), 'utf8'));
+    assert.deepEqual(index.branding, branded.branding);
+
+    const flash = defaults(root);
+    flash.branding = {
+      primaryColor: '#FE2B8F',
+      secondaryColor: '#33153D',
+      logoAsset: 'flash',
+    };
+    await store.save(flash);
+    assert.deepEqual((await store.load()).branding, flash.branding);
+  });
+
   it('accepts and preserves an older agent without an appearance', async () => {
     const root = await tempRoot();
     const store = new Store(root);
@@ -253,6 +284,63 @@ describe('validateConfig', () => {
 
     const extraField = defaults(root);
     (extraField.agents[0].appearance as unknown as Record<string, unknown>).svg = '<svg />';
+    expectInvalid(extraField, /campos inválidos/i);
+  });
+
+  it('rejects unsafe brand colors, logo sources, oversized images, and extra fields', async () => {
+    const root = await tempRoot();
+
+    const invalidColor = defaults(root);
+    invalidColor.branding = { primaryColor: 'hotpink', secondaryColor: '#33153D' };
+    expectInvalid(invalidColor, /primaryColor/i);
+
+    const remoteLogo = defaults(root);
+    remoteLogo.branding = {
+      primaryColor: '#FE2B8F',
+      secondaryColor: '#33153D',
+      logoDataUrl: 'https://example.com/logo.svg',
+    };
+    expectInvalid(remoteLogo, /logoDataUrl/i);
+
+    const oversizedLogo = defaults(root);
+    oversizedLogo.branding = {
+      primaryColor: '#FE2B8F',
+      secondaryColor: '#33153D',
+      logoDataUrl: `data:image/png;base64,${'A'.repeat(700_001)}`,
+    };
+    expectInvalid(oversizedLogo, /logoDataUrl/i);
+
+    const executableSvg = defaults(root);
+    executableSvg.branding = {
+      primaryColor: '#FE2B8F',
+      secondaryColor: '#33153D',
+      logoDataUrl: `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>').toString('base64')}`,
+    };
+    expectInvalid(executableSvg, /conteúdo externo ou executável/i);
+
+    const unknownAsset = defaults(root);
+    unknownAsset.branding = {
+      primaryColor: '#FE2B8F',
+      secondaryColor: '#33153D',
+      logoAsset: 'unknown',
+    } as never;
+    expectInvalid(unknownAsset, /alternativa desconhecida/i);
+
+    const ambiguousLogo = defaults(root);
+    ambiguousLogo.branding = {
+      primaryColor: '#FE2B8F',
+      secondaryColor: '#33153D',
+      logoAsset: 'flash',
+      logoDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+    };
+    expectInvalid(ambiguousLogo, /não ambas/i);
+
+    const extraField = defaults(root);
+    extraField.branding = {
+      primaryColor: '#FE2B8F',
+      secondaryColor: '#33153D',
+      css: 'body{display:none}',
+    } as never;
     expectInvalid(extraField, /campos inválidos/i);
   });
 

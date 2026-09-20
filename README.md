@@ -27,10 +27,13 @@ npm start
 1. Em **Projects**, defina o caminho absoluto do repositório, regras, equipe e workflow padrão.
 2. Em **Team**, configure o executável e argumentos de cada agente. O CLI precisa estar instalado e autenticado no ambiente que inicia o servidor.
    No perfil do agente, **Montar boneco** abre o criador de avatar local. Escolha um preset ou combine rosto, expressão, cabelo, roupa, acessório e cores; aplique o boneco e use **Salvar mudanças** para persistir. Configurações antigas continuam exibindo as iniciais como fallback.
-3. Em **Workflow**, escolha os agentes, instruções e destinos de cada status. `done` encerra com sucesso; `error` encerra com erro. Etapas de teste exigem `PASS` ou `FAIL` no resultado; saída zero sozinha produz `DONE`.
+3. Em **Workflow**, monte o mapa visual: arraste as etapas para posicioná-las e ligue a saída de um resultado à entrada da próxima etapa. Você também pode clicar na saída e depois no destino. Selecione uma etapa para editar agente e instrução; a lista oferece edição por formulário. `done` encerra com sucesso; `error` encerra com erro. Etapas de teste exigem `PASS` ou `FAIL` no resultado; saída zero sozinha produz `DONE`.
 4. Em **Run**, descreva a tarefa e inicie. Clique nos agentes para ver saída, mensagens e arquivos declarados pelo CLI. A timeline registra transições reais.
+5. Em **Aparência**, personalize as cores primária e secundária e envie uma logo PNG, JPEG, WebP ou SVG de até 512 KB. A prévia é imediata; use **Salvar mudanças** para persistir. O tema próprio Agent Office é o padrão, e a skin Flash fica disponível somente como alternativa em **Temas incluídos**.
 
 No primeiro uso, o painel de onboarding oferece uma demonstração determinística e um diagnóstico local. O diagnóstico verifica diretório, executável, equipe e estrutura do workflow sem iniciar o CLI; autenticação e modelo permanecem marcados como não verificados. Durante um run, a configuração pode ser consultada em modo somente leitura.
+
+No editor de workflow, use os controles de zoom para navegar e organize as etapas quando precisar reorganizar o mapa. As ligações continuam seguindo PASS, FAIL, DONE e ERROR, incluindo ciclos de correção limitados pelo máximo de etapas. Mover um bloco muda apenas sua posição visual. Use **Salvar mudanças** para persistir posições e regras; workflows antigos continuam funcionando sem posições salvas. Escape cancela um gesto de arraste ou conexão em andamento.
 
 Os templates iniciais usam o executável `codex` e modelo `gpt-5.6-luna`, editável conforme os modelos disponíveis no seu CLI/conta. O aplicativo não altera sua configuração de modelos nem ativa execução sem aprovações. Configure argumentos e permissões de acordo com o CLI instalado.
 
@@ -75,7 +78,7 @@ Crie um workflow de uma etapa, com `PASS → done` e `ERROR → error`, e inclua
 
 ```text
 .agent-office/
-  team.yaml             # agentes, projetos, equipe e índice de workflows
+  team.yaml             # agentes, projetos, equipe, identidade visual e índice de workflows
   agents/<id>.md        # instruções de cada agente
   workflows/<id>.yaml   # etapas e transições
   config-manifest.json  # revisão e hashes da configuração íntegra publicada
@@ -83,7 +86,7 @@ Crie um workflow de uma etapa, com `PASS → done` e `ERROR → error`, e inclua
   history.json          # runs, tentativas, saídas e timeline limitadas
 ```
 
-A interface escreve esses arquivos. Alterações manuais são carregadas ao reiniciar o servidor (ou via `POST /api/config/reload` com JSON). Configurações não podem mudar durante um run. A API usa uma revisão para impedir que duas abas sobrescrevam mudanças silenciosamente. IDs são validados, gravações por arquivo usam rename atômico, o manifesto permite recuperar a última geração íntegra e requisições de alteração são serializadas. Histórico inválido é preservado para diagnóstico antes de iniciar um histórico vazio. O histórico é limitado a 1.000 eventos, 100 mensagens e 100 mil caracteres de saída por agente; a interface permite consultar execuções e tentativas separadamente. Não guarde segredos em prompts se não quiser registrá-los no disco.
+A interface escreve esses arquivos. Alterações manuais são carregadas ao reiniciar o servidor (ou via `POST /api/config/reload` com JSON). A logo personalizada é embutida em `team.yaml`; URLs remotas, CSS e outros formatos não são aceitos, mantendo o aplicativo offline. Configurações não podem mudar durante um run. A API usa uma revisão para impedir que duas abas sobrescrevam mudanças silenciosamente. IDs são validados, gravações por arquivo usam rename atômico, o manifesto permite recuperar a última geração íntegra e requisições de alteração são serializadas. Histórico inválido é preservado para diagnóstico antes de iniciar um histórico vazio. O histórico é limitado a 1.000 eventos, 100 mensagens e 100 mil caracteres de saída por agente; a interface permite consultar execuções e tentativas separadamente. Não guarde segredos em prompts se não quiser registrá-los no disco.
 
 Um reinício do servidor marca execuções interrompidas; não as retoma automaticamente. Timeout e limite de etapas evitam processos e ciclos indefinidos. Só uma execução fica ativa por vez.
 

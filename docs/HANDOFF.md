@@ -42,6 +42,7 @@ A orientação visual permitida neste projeto é **Frontend Design**. O usuário
 - O servidor permanece local e não adiciona CORS aberto.
 - UI não inventa atividade, histórico, percentual ou arquivos alterados.
 - Não configurar aprovações automáticas de CLI sem pedido do usuário.
+- `Config.branding` é opcional: sua ausência mantém a identidade própria Agent Office. Quando presente, aceite somente cores hexadecimais, a alternativa Flash incluída ou uma logo embutida validada; não introduza CSS ou URL remota.
 
 ## Como delegar uma tarefa
 
@@ -99,3 +100,7 @@ Alterações exigem `Content-Type: application/json`. Erros HTTP retornam `{erro
 ## Prompt pronto para uma próxima sessão
 
 > Continue o Agent Office como orquestrador Sol. Leia PLAN.md, docs/HANDOFF.md e README.md, confira o estado do git e execute o baseline. Trabalhe no primeiro bloqueio comprovado do plano. Delegue subtarefas pequenas para Luna Max e use validação independente com navegador para a interface. Não use Impeccable, não recomece o projeto e não expanda o escopo sem necessidade. Atualize o plano com evidências antes de encerrar.
+
+## Extensão do editor visual de workflow
+
+O usuário autorizou substituir a edição centrada em formulários por um canvas de etapas arrastáveis e conexões por resultado. `Step.position` é metadado opcional de layout persistido no próprio YAML; não muda a ordem nem as transições executadas pelo engine. Mantenha compatibilidade com etapas sem posição, salvamento/revisão do rascunho e bloqueio de alterações durante execução. O plano registra a validação dessa extensão.

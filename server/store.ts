@@ -17,6 +17,7 @@ import type {
   AgentMessage,
   AgentRuntime,
   AvatarAppearance,
+  BrandTheme,
   Config,
   Run,
   RunHistoryEntry,
@@ -104,6 +105,62 @@ const AVATAR_APPEARANCE_FIELDS = [
   "accessory",
   "backgroundColor",
 ] as const;
+
+const BRAND_THEME_FIELDS = ["primaryColor", "secondaryColor", "logoAsset", "logoDataUrl"] as const;
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+const BRAND_LOGO_DATA_URL = /^data:image\/(png|jpeg|webp|svg\+xml);base64,([a-zA-Z0-9+/]+={0,2})$/;
+const MAX_BRAND_LOGO_DATA_URL_LENGTH = 700_000;
+const MAX_BRAND_LOGO_BYTES = 512 * 1024;
+const UNSAFE_EMBEDDED_SVG = /<(?:script|foreignObject|iframe|object|embed)\b|on[a-z]+\s*=|(?:href|src)\s*=\s*["']?\s*(?:https?:|\/\/|javascript:)|url\s*\(/i;
+
+export function validateBrandTheme(
+  value: unknown,
+  field = "Identidade visual",
+): asserts value is BrandTheme {
+  assert(isRecord(value), `${field}: objeto inválido.`);
+  const keys = Object.keys(value);
+  assert(
+    keys.every((key) => (BRAND_THEME_FIELDS as readonly string[]).includes(key)) &&
+      Object.prototype.hasOwnProperty.call(value, "primaryColor") &&
+      Object.prototype.hasOwnProperty.call(value, "secondaryColor"),
+    `${field}: campos inválidos.`,
+  );
+  assert(
+    typeof value.primaryColor === "string" && HEX_COLOR.test(value.primaryColor),
+    `${field}.primaryColor: use uma cor hexadecimal como #4F5DFF.`,
+  );
+  assert(
+    typeof value.secondaryColor === "string" && HEX_COLOR.test(value.secondaryColor),
+    `${field}.secondaryColor: use uma cor hexadecimal como #17223B.`,
+  );
+  if (value.logoAsset !== undefined) {
+    assert(value.logoAsset === "flash", `${field}.logoAsset: alternativa desconhecida.`);
+  }
+  assert(
+    value.logoAsset === undefined || value.logoDataUrl === undefined,
+    `${field}: escolha uma logo incluída ou personalizada, não ambas.`,
+  );
+  if (value.logoDataUrl !== undefined) {
+    const match = typeof value.logoDataUrl === "string"
+      ? BRAND_LOGO_DATA_URL.exec(value.logoDataUrl)
+      : null;
+    assert(
+      typeof value.logoDataUrl === "string" &&
+        value.logoDataUrl.length <= MAX_BRAND_LOGO_DATA_URL_LENGTH &&
+        match,
+      `${field}.logoDataUrl: envie PNG, JPEG, WebP ou SVG válido de até 512 KB.`,
+    );
+    const bytes = Buffer.from(match[2], "base64");
+    assert(bytes.length <= MAX_BRAND_LOGO_BYTES, `${field}.logoDataUrl: a imagem excede 512 KB.`);
+    if (match[1] === "svg+xml") {
+      const svg = bytes.toString("utf8");
+      assert(
+        svg.includes("<svg") && !UNSAFE_EMBEDDED_SVG.test(svg),
+        `${field}.logoDataUrl: o SVG contém conteúdo externo ou executável.`,
+      );
+    }
+  }
+}
 
 /**
  * Validate the serializable avatar contract at the persistence boundary.
@@ -470,6 +527,7 @@ function unique(items: { id: string }[], label: string) {
 export function validateConfig(value: unknown): asserts value is Config {
   assert(value && typeof value === "object", "Configuração inválida.");
   const c = value as Config;
+  if (c.branding !== undefined) validateBrandTheme(c.branding);
   for (const key of ["agents", "projects", "workflows"] as const)
     assert(
       Array.isArray(c[key]) && c[key].length <= 100,
@@ -534,6 +592,20 @@ export function validateConfig(value: unknown): asserts value is Config {
         `Agente da etapa ${s.id} não existe.`,
       );
       str(s.instruction, "Instrução da etapa");
+      if (s.position !== undefined) {
+        assert(
+          isRecord(s.position) &&
+            typeof s.position.x === "number" &&
+            Number.isFinite(s.position.x) &&
+            s.position.x >= 0 &&
+            s.position.x <= 100000 &&
+            typeof s.position.y === "number" &&
+            Number.isFinite(s.position.y) &&
+            s.position.y >= 0 &&
+            s.position.y <= 100000,
+          `Posição inválida na etapa ${s.id}.`,
+        );
+      }
       assert(
         s.transitions &&
           typeof s.transitions === "object" &&

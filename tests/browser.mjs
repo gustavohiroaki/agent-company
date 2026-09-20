@@ -72,8 +72,31 @@ async function waitForText(page, text, timeout = 8_000) {
     .waitFor({ state: "visible", timeout });
 }
 
+async function saveDraft(page) {
+  const button = page.locator(".save-button").first();
+  await button.waitFor({ state: "visible" });
+  await page.waitForFunction(() => {
+    const saveButton = document.querySelector(".save-button");
+    return saveButton &&
+      !saveButton.disabled &&
+      saveButton.classList.contains("is-dirty") &&
+      saveButton.textContent?.includes("Salvar mudanças");
+  }, undefined, { timeout: 8_000 });
+  await button.click();
+  await page.waitForFunction(() => {
+    const saveButton = document.querySelector(".save-button");
+    return saveButton &&
+      saveButton.disabled &&
+      !saveButton.classList.contains("is-dirty") &&
+      saveButton.textContent?.includes("Tudo salvo");
+  }, undefined, { timeout: 8_000 });
+}
+
 async function selectResource(page, text) {
-  const row = page.locator(".resource-row").filter({ hasText: text }).first();
+  const legacyRow = page.locator(".resource-row").filter({ hasText: text }).first();
+  const row = (await legacyRow.count()) > 0
+    ? legacyRow
+    : page.locator(".workflow-picker-row").filter({ hasText: text }).first();
   await row.waitFor({ state: "visible" });
   await row.click();
 }
@@ -512,10 +535,7 @@ try {
     appliedDeveloperSvg !== initialDeveloperSvg,
     "applying the avatar preset did not update the Team portrait draft",
   );
-  await desktop
-    .getByRole("button", { name: "Salvar mudanças", exact: true })
-    .click();
-  await waitForText(desktop, "Tudo salvo");
+  await saveDraft(desktop);
   const avatarSavedState = await apiState(baseUrl);
   const savedDeveloperAvatar = avatarSavedState.config.agents.find(
     (agent) => agent.id === "developer",
@@ -626,10 +646,7 @@ try {
     .waitFor({ state: "visible" });
   desktop.once("dialog", (dialog) => dialog.accept());
   await desktop.locator('button[title="Remover agente"]').click();
-  await desktop
-    .getByRole("button", { name: "Salvar mudanças", exact: true })
-    .click();
-  await waitForText(desktop, "Tudo salvo");
+  await saveDraft(desktop);
 
   // Create a project through the UI and make it runnable by the edited workflow team.
   await desktop.getByRole("button", { name: "Projects", exact: true }).click();
@@ -657,6 +674,7 @@ try {
   await desktop.getByRole("button", { name: "Workflow", exact: true }).click();
   await waitForText(desktop, "Workflows");
   await selectResource(desktop, "Simple");
+  await desktop.getByRole("tab", { name: "Lista", exact: true }).click();
   const testerCard = desktop.locator(".workflow-step-card").nth(1);
   // Keep a bounded correction loop valid: Tester PASS returns to Developer and
   // DONE still terminates the workflow.
@@ -685,10 +703,7 @@ try {
       initialIds.length + 1,
     "adding a workflow step did not render a new card",
   );
-  await desktop
-    .getByRole("button", { name: "Salvar mudanças", exact: true })
-    .click();
-  await waitForText(desktop, "Tudo salvo");
+  await saveDraft(desktop);
   const addedState = await apiState(baseUrl);
   const addedIds = addedState.config.workflows
     .find((workflow) => workflow.id === "simple")
@@ -698,16 +713,18 @@ try {
       new Set(addedIds).size === addedIds.length,
     "adding a workflow step produced duplicate IDs",
   );
-  const removedId = addedIds.at(-1);
+  const removedId = addedIds.find((id) => !initialIds.includes(id));
+  requireCondition(Boolean(removedId), "adding a workflow step did not expose its new ID");
   await desktop
-    .locator(".workflow-step-card")
-    .last()
+    .locator(`.workflow-step-card[data-step-id="${removedId}"]`)
     .locator('button[title="Remover passo"]')
     .click();
-  await desktop
-    .getByRole("button", { name: "Salvar mudanças", exact: true })
-    .click();
-  await waitForText(desktop, "Tudo salvo");
+  await desktop.waitForFunction(
+    (stepId) => !document.querySelector(`.workflow-step-card[data-step-id="${stepId}"]`),
+    removedId,
+    { timeout: 5_000 },
+  );
+  await saveDraft(desktop);
   const removedState = await apiState(baseUrl);
   const removedIds = removedState.config.workflows
     .find((workflow) => workflow.id === "simple")
@@ -736,10 +753,7 @@ try {
   await desktop
     .getByRole("button", { name: "Adicionar passo", exact: true })
     .click();
-  await desktop
-    .getByRole("button", { name: "Salvar mudanças", exact: true })
-    .click();
-  await waitForText(desktop, "Tudo salvo");
+  await saveDraft(desktop);
   const readdedState = await apiState(baseUrl);
   const readdedIds = readdedState.config.workflows
     .find((workflow) => workflow.id === "simple")

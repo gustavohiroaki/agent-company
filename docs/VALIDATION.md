@@ -4,7 +4,7 @@ Validado em 20 de setembro de 2026 com `AGENT_OFFICE_ROOT` temporário, fixtures
 
 Comandos finais:
 
-- `npm test` — 52 testes passaram, 0 falharam.
+- `npm test` — 55 testes passaram, 0 falharam.
 - `npm run build` — verificação TypeScript e build de produção Vite passaram.
 - `npx tsx tests/browser.mjs` — passou; o script cria servidor e raiz temporários, usa Chromium, executa fixtures locais e limpa os recursos ao terminar.
 - `npx tsx --test --test-name-pattern='stop kills descendants that ignore SIGTERM' tests/runner.test.ts` repetido 20 vezes após a correção — 20/20 passaram na validação independente.
@@ -43,3 +43,50 @@ Durante a primeira rodada após o painel de evidências, o teste encontrou overf
 Uma rodada completa posterior reproduziu a intermitência antiga do teste de descendentes: 47/48 na suíte e 9/10 no caso focal, falhando porque o arquivo do fixture já existia enquanto o conteúdo do PID ainda estava vazio. A sincronização foi corrigida em `tests/runner.test.ts`: cada execução usa diretório temporário próprio e espera um PID inteiro válido antes de parar o runner. O comportamento testado continua exigindo que o descendente que ignora SIGTERM deixe de existir. Depois da correção, o orquestrador e um Luna Max independente obtiveram 20/20 execuções focais cada; a suíte completa voltou a 48/48. `server/runner.ts` não foi alterado.
 
 Limitações: as fixtures provam execução local, persistência, renderização e ciclo de vida. Elas não provam autenticação, permissões, disponibilidade ou comportamento de um provedor real. Arquivos alterados continuam sendo declarações do agente; não há atribuição automática pelo git. A saída retida pode omitir o início após 100.000 caracteres, e a UI sinaliza esse truncamento.
+
+## Extensão do editor visual de workflow — validação independente
+
+A extensão adiciona posições opcionais em `Step`. A cobertura de persistência está em
+`tests/workflow-layout.test.ts` e verifica configuração legada sem `position`, round-trip
+de YAML com coordenadas finitas nos limites `0..100000` e rejeição de `NaN`, infinito,
+valores negativos, valores acima do limite, coordenadas ausentes e tipos incorretos.
+
+O fluxo de navegador dedicado está em `tests/workflow-browser.mjs` e foi executado com uma
+raiz `AGENT_OFFICE_ROOT` temporária e uma fixture Node determinística, sem chamadas de IA.
+A rodada Chromium cobriu, em desktop e em 390px:
+
+- arraste de nós e persistência das posições após salvar e recarregar;
+- ligação por arraste de uma saída nomeada e ligação pela alternativa de clique saída → nó;
+- transições `PASS`, `FAIL`, `DONE` e `ERROR`, inclusive ciclo de correção quando o fluxo o suporta;
+- remoção de ligação e etapa, seleção da etapa inicial, organizar, zoom, reset e Escape;
+- navegação por teclado e alternativa de lista, sem depender apenas de pointer/hover;
+- bloqueio da tela durante um run pendurado e ausência de mutações por pointer nesse estado;
+- ausência de overflow horizontal no viewport móvel e screenshots em `artifacts/workflow-editor-*.png`.
+
+O teste exige atributos estáveis `data-step-id`, `data-status` nas portas e atributos de
+origem/status nas ligações para que a verificação permaneça independente de texto e CSS.
+
+### Resultado final do editor visual
+
+Em 20 de setembro de 2026, a rodada dedicada passou com Chromium real:
+
+- `npx tsx tests/workflow-browser.mjs` — passou em desktop 1440×1000 e mobile 390×844,
+  usando uma raiz `AGENT_OFFICE_ROOT` temporária e uma fixture Node determinística sem IA;
+- `npm test` — 55/55 testes passaram;
+- `npm run build` — TypeScript e build de produção Vite passaram;
+- `npx tsx tests/browser.mjs` — regressão completa passou após adaptar a seleção de recursos
+  ao `.workflow-picker-row` da aba Workflow e estabilizar a remoção por `data-step-id`.
+
+A rodada dedicada verificou arraste e persistência de posições, ligações por arraste e por
+clique para nós e terminais `done`/`error`, remoção de ligação e etapa, seleção da etapa
+inicial, organizar/zoom/ajustar/Escape, lista e teclado, recarga, ciclo limitado, bloqueio
+durante execução e ausência de overflow horizontal no viewport móvel. As capturas foram
+inspecionadas visualmente: [desktop do editor](/home/gustavohiroaki/Documentos/ChatGPT/agent-company/artifacts/workflow-editor-desktop.png),
+[mobile do editor](/home/gustavohiroaki/Documentos/ChatGPT/agent-company/artifacts/workflow-editor-mobile.png)
+e [estado inicial](/home/gustavohiroaki/Documentos/ChatGPT/agent-company/artifacts/workflow-editor-initial.png).
+
+## Identidade visual configurável
+
+`tests/branding-browser.mjs` usa Chromium real e uma raiz temporária para verificar a identidade sem tocar na configuração do usuário. A rodada cobre a logo e paleta próprias Agent Office como padrão, aplicação do preset Flash alternativo, retorno ao padrão sem objeto redundante, cores primária/secundária, contraste automático do botão, upload SVG embutido, persistência pela API, recarga e ausência de overflow em 1440×1000 e 390×844.
+
+O Store cobre compatibilidade de configuração sem `branding`, round-trip do preset incluído e de logo personalizada no `team.yaml`, além da rejeição de alternativa desconhecida, combinação ambígua de duas logos, cor não hexadecimal, URL remota, imagem acima do limite e campo extra. Na rodada final, `npm test` passou com 57/57, o build passou e os testes Chromium dedicado, geral e do editor de workflow passaram. Capturas da identidade padrão inspecionadas: [desktop](/home/gustavohiroaki/Documentos/ChatGPT/agent-company/artifacts/branding-default-desktop.png) e [mobile](/home/gustavohiroaki/Documentos/ChatGPT/agent-company/artifacts/branding-default-mobile.png). Capturas da configuração personalizada: [desktop](/home/gustavohiroaki/Documentos/ChatGPT/agent-company/artifacts/branding-desktop.png) e [mobile](/home/gustavohiroaki/Documentos/ChatGPT/agent-company/artifacts/branding-mobile.png).

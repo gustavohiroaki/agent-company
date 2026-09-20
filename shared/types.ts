@@ -133,6 +133,7 @@ export interface Step {
   agentId: string;
   instruction: string;
   transitions: Partial<Record<ResultStatus, string>>;
+  position?: { x: number; y: number };
 }
 export interface Workflow {
   id: string;
@@ -149,11 +150,21 @@ export interface Project {
   workflowId: string;
   agentIds: string[];
 }
+export interface BrandTheme {
+  primaryColor: string;
+  secondaryColor: string;
+  /** Built-in alternatives. Missing means the Agent Office logo. */
+  logoAsset?: "flash";
+  /** Optional embedded image so the local app never depends on a remote URL. */
+  logoDataUrl?: string;
+}
 export interface Config {
   agents: Agent[];
   workflows: Workflow[];
   projects: Project[];
   activeProjectId: string;
+  /** Missing means the built-in skin and logo. */
+  branding?: BrandTheme;
 }
 export type DiagnosticSeverity = "error" | "warning" | "info";
 export type DiagnosticCheckStatus = "ok" | "error" | "not-verified";

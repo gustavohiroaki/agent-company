@@ -27,6 +27,7 @@ import {
   ListChecks,
   LoaderCircle,
   LockKeyhole,
+  Maximize2,
   MessageCircle,
   MessageSquareText,
   MoreHorizontal,
@@ -53,12 +54,14 @@ import {
   Eye,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import type {
   Agent,
   AgentResult,
   AgentRuntime,
   AgentStatus,
   Area,
+  BrandTheme,
   Config,
   DiagnosticsReport,
   DiagnosticIssue,
@@ -72,8 +75,9 @@ import type {
   Workflow,
 } from '../shared/types';
 import { AgentAvatar, AvatarBuilderDialog, presetForAgent } from './avatar';
+import WorkflowCanvas from './WorkflowCanvas';
 
-type Screen = 'run' | 'projects' | 'team' | 'workflow';
+type Screen = 'run' | 'projects' | 'team' | 'workflow' | 'appearance';
 type ConnectionState = 'connecting' | 'connected' | 'offline';
 type ArgsMode = 'json' | 'lines';
 type PendingRun = 'run' | 'restart-run';
@@ -91,6 +95,66 @@ const RESULT_STATUSES: ResultStatus[] = ['PASS', 'FAIL', 'DONE', 'ERROR'];
 // limit visible in the UI so a reviewer can tell when the beginning may be
 // unavailable instead of mistaking a partial log for a complete one.
 const MAX_RETAINED_OUTPUT_CHARS = 100_000;
+const MAX_BRAND_LOGO_FILE_BYTES = 512 * 1024;
+const DEFAULT_BRANDING: BrandTheme = {
+  primaryColor: '#4F5DFF',
+  secondaryColor: '#17223B',
+};
+const FLASH_BRANDING: BrandTheme = {
+  primaryColor: '#FE2B8F',
+  secondaryColor: '#33153D',
+  logoAsset: 'flash',
+};
+
+function brandLogoSource(branding: BrandTheme): string {
+  if (branding.logoDataUrl) return branding.logoDataUrl;
+  if (branding.logoAsset === 'flash') return '/brands/flash/logo.svg';
+  return '/brands/default/logo.svg';
+}
+
+function brandLogoLabel(branding: BrandTheme): string {
+  if (branding.logoDataUrl) return 'Logo personalizada';
+  if (branding.logoAsset === 'flash') return 'Flash';
+  return 'Agent Office';
+}
+
+function effectiveBranding(config?: Config | null): BrandTheme {
+  return config?.branding ?? DEFAULT_BRANDING;
+}
+
+function hexChannels(hex: string): [number, number, number] {
+  const safe = /^#[0-9a-f]{6}$/i.test(hex) ? hex : DEFAULT_BRANDING.secondaryColor;
+  return [Number.parseInt(safe.slice(1, 3), 16), Number.parseInt(safe.slice(3, 5), 16), Number.parseInt(safe.slice(5, 7), 16)];
+}
+
+function relativeLuminance(hex: string): number {
+  const channels = hexChannels(hex).map((value) => {
+    const normalized = value / 255;
+    return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+  });
+  return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+}
+
+function contrastRatio(a: string, b: string): number {
+  const [light, dark] = [relativeLuminance(a), relativeLuminance(b)].sort((left, right) => right - left);
+  return (light + 0.05) / (dark + 0.05);
+}
+
+function primaryTextColor(color: string): string {
+  return contrastRatio(color, '#FFFFFF') >= 4.5 ? '#FFFFFF' : '#24151F';
+}
+
+function readableSecondary(color: string): string {
+  if (contrastRatio(color, '#FFFFFF') >= 4.5) return color;
+  const [red, green, blue] = hexChannels(color);
+  const target = hexChannels('#24151F');
+  for (let weight = 0.15; weight <= 1; weight += 0.15) {
+    const mixed = [red, green, blue].map((channel, index) => Math.round(channel * (1 - weight) + target[index] * weight));
+    const hex = `#${mixed.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+    if (contrastRatio(hex, '#FFFFFF') >= 4.5) return hex;
+  }
+  return '#24151F';
+}
 
 const areaMeta: Record<Area, { label: string; className: string; icon: typeof Building2; detail: string }> = {
   Executive: { label: 'Executive', className: 'area-executive', icon: DoorOpen, detail: 'Direção e prioridades' },
@@ -812,13 +876,17 @@ function App() {
         />
       );
     }
+    if (screen === 'appearance') {
+      return <AppearanceScreen config={config} onChange={commitDraft} />;
+    }
     if (screen === 'workflow') {
       return (
-        <WorkflowScreen
+        <VisualWorkflowScreen
           config={config}
           selectedId={workflowEditorId || config.workflows[0]?.id || ''}
           onSelect={setWorkflowEditorId}
           onChange={commitDraft}
+          disabled={isRunRunning || saving}
           onAdd={() => {
             const next = blankWorkflow(config.workflows.length + 1, config);
             commitDraft((draft) => ({ ...draft, workflows: [...draft.workflows, next] }));
@@ -883,14 +951,23 @@ function App() {
     );
   };
 
+  const branding = effectiveBranding(config);
+  const themeStyle = {
+    '--theme-primary': branding.primaryColor,
+    '--theme-secondary': branding.secondaryColor,
+    '--theme-secondary-ink': readableSecondary(branding.secondaryColor),
+    '--theme-on-primary': primaryTextColor(branding.primaryColor),
+  } as CSSProperties;
+  const brandLogo = brandLogoSource(branding);
+
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={themeStyle}>
       <header className="topbar">
         <div className="brand-lockup">
-          <div className="brand-mark" aria-hidden="true"><Building2 size={21} strokeWidth={2.3} /></div>
-          <div>
+          <img className="brand-logo" src={brandLogo} alt={brandLogoLabel(branding)} />
+          <div className="brand-product">
             <div className="brand-name">Agent Office</div>
-            <div className="brand-caption">sala de operações</div>
+            <div className="brand-caption">operação de agentes</div>
           </div>
         </div>
         <nav className="primary-nav" aria-label="Seções">
@@ -899,6 +976,7 @@ function App() {
             ['projects', 'Projects', 'Projetos', FolderKanban],
             ['team', 'Team', 'Equipe', UsersRound],
             ['workflow', 'Workflow', 'Workflows', GitBranch],
+            ['appearance', 'Appearance', 'Aparência', Settings2],
           ] as const).map(([id, ariaLabel, label, Icon]) => (
             <button key={id} type="button" className={`nav-item ${screen === id ? 'is-active' : ''}`} aria-label={ariaLabel} onClick={() => setScreen(id)} disabled={isRunRunning && id !== 'run'} title={isRunRunning && id !== 'run' ? 'Pare a execução antes de editar a configuração.' : undefined}>
               <Icon size={16} strokeWidth={2.1} />
@@ -1525,6 +1603,108 @@ function PageHeader({ eyebrow, title, description, icon: Icon, action }: { eyebr
   return <div className="page-header"><div className="page-header-icon"><Icon size={21} /></div><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{description}</p></div>{action && <div className="page-header-action">{action}</div>}</div>;
 }
 
+function AppearanceScreen({ config, onChange }: { config: Config; onChange: (updater: (config: Config) => Config) => void }) {
+  const [logoError, setLogoError] = useState('');
+  const branding = effectiveBranding(config);
+  const logo = brandLogoSource(branding);
+  const updateBranding = (patch: Partial<BrandTheme>) => onChange((draft) => ({
+    ...draft,
+    branding: { ...effectiveBranding(draft), ...patch },
+  }));
+  const removeCustomLogo = () => onChange((draft) => ({
+    ...draft,
+    branding: {
+      primaryColor: effectiveBranding(draft).primaryColor,
+      secondaryColor: effectiveBranding(draft).secondaryColor,
+    },
+  }));
+  const restoreDefaults = () => onChange((draft) => {
+    const next = { ...draft };
+    delete next.branding;
+    return next;
+  });
+  const onLogoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+    if (!allowedTypes.includes(file.type)) {
+      setLogoError('Use uma imagem PNG, JPEG, WebP ou SVG.');
+      return;
+    }
+    if (file.size > MAX_BRAND_LOGO_FILE_BYTES) {
+      setLogoError('A logo deve ter no máximo 512 KB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => setLogoError('Não foi possível ler este arquivo.');
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        setLogoError('Não foi possível ler este arquivo.');
+        return;
+      }
+      setLogoError('');
+      updateBranding({ logoAsset: undefined, logoDataUrl: reader.result });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return <div className="settings-page appearance-page">
+    <PageHeader eyebrow="identidade visual" title="Aparência" description="Adapte a marca do escritório sem alterar agentes, projetos ou workflows." icon={Settings2} />
+    <section className="brand-preview paper-panel" aria-label="Prévia da identidade visual">
+      <div className="brand-preview-bar">
+        <div className="brand-lockup">
+          <img className="brand-logo" src={logo} alt="Prévia da logo" />
+          <div className="brand-product"><div className="brand-name">Agent Office</div><div className="brand-caption">operação de agentes</div></div>
+        </div>
+        <div className="brand-preview-nav"><span className="is-active">Execução</span><span>Projetos</span><span>Equipe</span></div>
+        <span className="button button-primary" aria-hidden="true">Ação principal</span>
+      </div>
+      <div className="brand-preview-body">
+        <span className="brand-preview-swatch" aria-hidden="true" />
+        <div><strong>Prévia ao vivo</strong><p>A logo e as cores já aparecem no aplicativo. Salve para mantê-las após reiniciar.</p></div>
+      </div>
+    </section>
+    <div className="appearance-grid">
+      <section className="appearance-card paper-panel">
+        <div className="appearance-card-heading"><div className="heading-icon heading-icon-cobalt"><WandSparkles size={17} /></div><div><h2>Cores da marca</h2><p>A cor primária destaca ações; a secundária dá identidade aos títulos.</p></div></div>
+        <div className="brand-color-grid">
+          <label className="brand-color-field"><span>Cor primária</span><span className="brand-color-input"><input type="color" value={branding.primaryColor} onChange={(event) => updateBranding({ primaryColor: event.target.value.toUpperCase() })} aria-label="Cor primária" /><code>{branding.primaryColor.toUpperCase()}</code></span></label>
+          <label className="brand-color-field"><span>Cor secundária</span><span className="brand-color-input"><input type="color" value={branding.secondaryColor} onChange={(event) => updateBranding({ secondaryColor: event.target.value.toUpperCase() })} aria-label="Cor secundária" /><code>{branding.secondaryColor.toUpperCase()}</code></span></label>
+        </div>
+        <p className="appearance-help">O texto dos botões e dos títulos é ajustado automaticamente para manter contraste.</p>
+      </section>
+      <section className="appearance-card paper-panel">
+        <div className="appearance-card-heading"><div className="heading-icon heading-icon-warm"><FileText size={17} /></div><div><h2>Logo</h2><p>Use um arquivo leve. Ele será guardado localmente junto da configuração.</p></div></div>
+        <div className="logo-setting-row">
+          <div className="logo-setting-preview"><img src={logo} alt="Logo atual" /></div>
+          <div className="logo-setting-actions">
+            <label className="button button-quiet logo-upload-button">Escolher arquivo<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={onLogoChange} /></label>
+            <button type="button" className="button button-text" onClick={removeCustomLogo} disabled={!branding.logoDataUrl}>Usar logo padrão</button>
+          </div>
+        </div>
+        <p className={`appearance-help ${logoError ? 'has-error' : ''}`} aria-live="polite">{logoError || 'PNG, JPEG, WebP ou SVG · máximo de 512 KB · sem dependência de internet.'}</p>
+      </section>
+    </div>
+    <section className="appearance-presets paper-panel" aria-labelledby="appearance-presets-title">
+      <div className="appearance-presets-heading"><div><strong id="appearance-presets-title">Temas incluídos</strong><p>Agent Office é o padrão. A identidade Flash fica disponível somente como alternativa.</p></div></div>
+      <div className="appearance-preset-grid">
+        <button type="button" className={`appearance-preset ${!config.branding ? 'is-active' : ''}`} onClick={restoreDefaults}>
+          <img src="/brands/default/logo.svg" alt="" />
+          <span><strong>Agent Office</strong><small>Padrão</small></span>
+          <span className="appearance-preset-colors"><i style={{ background: DEFAULT_BRANDING.primaryColor }} /><i style={{ background: DEFAULT_BRANDING.secondaryColor }} /></span>
+        </button>
+        <button type="button" className={`appearance-preset ${branding.logoAsset === 'flash' ? 'is-active' : ''}`} onClick={() => onChange((draft) => ({ ...draft, branding: { ...FLASH_BRANDING } }))}>
+          <img src="/brands/flash/logo.svg" alt="" />
+          <span><strong>Flash</strong><small>Alternativa</small></span>
+          <span className="appearance-preset-colors"><i style={{ background: FLASH_BRANDING.primaryColor }} /><i style={{ background: FLASH_BRANDING.secondaryColor }} /></span>
+        </button>
+      </div>
+    </section>
+  </div>;
+}
+
 function ProjectsScreen({ config, selectedId, onSelect, onChange, onAdd, onRemove }: { config: Config; selectedId: string; onSelect: (id: string) => void; onChange: (updater: (config: Config) => Config) => void; onAdd: () => void; onRemove: (id: string) => void }) {
   const selected = config.projects.find((project) => project.id === selectedId) ?? config.projects[0];
   return <div className="settings-page"><PageHeader eyebrow="projetos" title="Projetos" description="Defina onde o trabalho acontece e qual equipe o conduz." icon={FolderKanban} action={<button type="button" className="button button-primary" onClick={onAdd}><Plus size={15} /> Novo projeto</button>} /><div className="settings-split"><div className="resource-list">{config.projects.length === 0 ? <EmptyResource icon={FolderKanban} text="Nenhum projeto ainda." /> : config.projects.map((project) => <button type="button" className={`resource-row ${selected?.id === project.id ? 'is-selected' : ''}`} key={project.id} onClick={() => onSelect(project.id)}><span className="resource-glyph"><FolderKanban size={16} /></span><span><strong>{project.name || 'Projeto sem nome'}</strong><small>{project.cwd || 'sem diretório'}</small></span><ChevronDown size={15} className="resource-chevron" /></button>)}</div>{selected ? <ProjectEditor project={selected} config={config} onChange={onChange} onRemove={() => onRemove(selected.id)} /> : <EditorEmpty title="Selecione um projeto" detail="Crie um projeto para configurar a equipe e o diretório." />}</div></div>;
@@ -1606,6 +1786,70 @@ function WorkflowEditor({ workflow, config, onChange, onRemove }: { workflow: Wo
   return <div className="editor-panel paper-panel workflow-editor"><div className="editor-title"><div><p className="eyebrow">mapa do workflow</p><h2>{workflow.name || 'Workflow sem nome'}</h2></div><button type="button" className="icon-button icon-danger" title="Remover workflow" onClick={onRemove}><Trash2 size={17} /></button></div><div className="form-stack"><div className="form-two-col"><label className="field-label">Nome<input value={workflow.name} onChange={(event) => updateWorkflow({ name: event.target.value })} /></label><label className="field-label">Máximo de passos<input type="number" min={1} value={workflow.maxSteps} onChange={(event) => updateWorkflow({ maxSteps: Number(event.target.value) || 1 })} /></label></div><label className="field-label">Começa em<select value={workflow.start} onChange={(event) => updateWorkflow({ start: event.target.value })}>{workflow.steps.map((step, index) => <option key={step.id} value={step.id}>Etapa {index + 1} · {stepDisplayName(step, index, config)}</option>)}</select></label><WorkflowSummary workflow={workflow} config={config} /><div className="workflow-status-help"><strong>Como ler as saídas:</strong> <span>PASS passou · FAIL pede correção · DONE concluiu sem PASS/FAIL · ERROR encerrou com erro.</span><small>Ciclos de correção são permitidos e permanecem limitados pelo máximo de etapas.</small></div><WorkflowDiagnostics workflow={workflow} config={config} unreachableSteps={unreachableSteps} missingOutputs={missingOutputs} teamMismatches={teamMismatches} /><div className="steps-heading"><div><h3>Etapas do workflow</h3><p>Os nomes abaixo são derivados da primeira frase da instrução; o contrato compartilhado continua sem um campo de nome.</p></div><button type="button" className="button button-quiet" onClick={addStep}><Plus size={14} /> Adicionar passo</button></div>{removalImpact && <div className="workflow-removal-impact" role="status"><div><strong>Etapa removida; impacto registrado.</strong><p>{removalImpact} Revise o resumo das ligações antes de salvar.</p></div><div className="workflow-removal-actions"><button type="button" className="button button-text" onClick={() => setRemovalImpact('')}>Fechar aviso</button></div></div>}<div className="steps-list">{workflow.steps.length === 0 ? <div className="steps-empty"><GitBranch size={18} /> Adicione a primeira etapa.</div> : workflow.steps.map((step, index) => <WorkflowStepCard key={step.id} step={step} index={index} steps={workflow.steps} config={config} start={workflow.start === step.id} onChange={(patch) => updateStep(step.id, patch)} onRemove={() => removeStepWithImpact(step.id)} />)}</div></div></div>;
 }
 
+type VisualWorkflowView = 'map' | 'list';
+
+function VisualWorkflowScreen({ config, selectedId, onSelect, onChange, onAdd, onRemove, disabled }: { config: Config; selectedId: string; onSelect: (id: string) => void; onChange: (updater: (config: Config) => Config) => void; onAdd: () => void; onRemove: (id: string) => void; disabled: boolean }) {
+  const selected = config.workflows.find((workflow) => workflow.id === selectedId) ?? config.workflows[0];
+  return <div className="settings-page workflow-page"><PageHeader eyebrow="workflow" title="Workflows" description="Organize etapas reais, conecte saídas e revise o caminho que a tarefa seguirá." icon={GitBranch} action={<button type="button" className="button button-primary" onClick={onAdd} disabled={disabled}><Plus size={15} /> Novo workflow</button>} /><div className="workflow-workspace"><aside className="workflow-picker paper-panel" aria-label="Lista de workflows"><div className="workflow-picker-heading"><span className="small-label"><GitBranch size={13} /> mapas</span><span>{config.workflows.length}</span></div>{config.workflows.length === 0 ? <EmptyResource icon={GitBranch} text="Nenhum workflow ainda." /> : config.workflows.map((workflow) => <button type="button" className={`workflow-picker-row ${selected?.id === workflow.id ? 'is-selected' : ''}`} key={workflow.id} onClick={() => onSelect(workflow.id)} disabled={disabled} data-workflow-id={workflow.id}><span className="workflow-picker-glyph"><GitBranch size={15} /></span><span><strong>{workflow.name || 'Workflow sem nome'}</strong><small>{workflow.steps.length} {workflow.steps.length === 1 ? 'etapa' : 'etapas'} · máx. {workflow.maxSteps}</small></span><ChevronDown size={14} className="workflow-picker-chevron" /></button>)}</aside>{selected ? <VisualWorkflowEditor workflow={selected} config={config} onChange={onChange} onRemove={() => onRemove(selected.id)} disabled={disabled} /> : <EditorEmpty title="Desenhe o fluxo" detail="Crie um workflow para conectar o trabalho dos agentes." />}</div></div>;
+}
+
+function VisualWorkflowEditor({ workflow, config, onChange, onRemove, disabled }: { workflow: Workflow; config: Config; onChange: (updater: (config: Config) => Config) => void; onRemove: () => void; disabled: boolean }) {
+  const [viewMode, setViewMode] = useState<VisualWorkflowView>('map');
+  const [removalImpact, setRemovalImpact] = useState('');
+  const [selectedStepId, setSelectedStepId] = useState(workflow.start || workflow.steps[0]?.id || '');
+  const updateWorkflow = (patch: Partial<Workflow>) => onChange((draft) => ({ ...draft, workflows: draft.workflows.map((item) => item.id === workflow.id ? { ...item, ...patch } : item) }));
+  const updateStep = (stepId: string, patch: Partial<Step>) => updateWorkflow({ steps: workflow.steps.map((step) => step.id === stepId ? { ...step, ...patch } : step) });
+  useEffect(() => {
+    if (!workflow.steps.some((step) => step.id === selectedStepId)) setSelectedStepId(workflow.start || workflow.steps[0]?.id || '');
+  }, [selectedStepId, workflow.start, workflow.steps]);
+  const selectedStep = workflow.steps.find((step) => step.id === selectedStepId) ?? workflow.steps[0];
+  const removeStep = (stepId: string) => {
+    if (workflow.steps.length <= 1) return;
+    const remainingIds = new Set(workflow.steps.filter((step) => step.id !== stepId).map((step) => step.id));
+    const steps = workflow.steps.filter((step) => step.id !== stepId).map((step) => ({ ...step, transitions: Object.fromEntries(Object.entries(step.transitions).filter(([, target]) => target === 'done' || target === 'error' || remainingIds.has(target))) as Step['transitions'] }));
+    updateWorkflow({ steps, start: workflow.start === stepId ? steps[0]?.id ?? '' : workflow.start });
+    if (selectedStepId === stepId) setSelectedStepId(steps[0]?.id ?? '');
+  };
+  const removeStepWithImpact = (stepId: string) => {
+    const target = workflow.steps.find((step) => step.id === stepId);
+    if (!target || workflow.steps.length <= 1) return;
+    const incoming = workflow.steps.flatMap((step, index) => RESULT_STATUSES.filter((status) => step.transitions[status] === stepId).map((status) => `${stepDisplayName(step, index, config)} · ${status}`));
+    const startChanged = workflow.start === stepId;
+    removeStep(stepId);
+    setRemovalImpact(`${incoming.length > 0 ? `Ligações afetadas: ${incoming.join(', ')}. ` : 'Nenhuma outra etapa apontava diretamente para ela. '}${startChanged ? 'A primeira etapa restante assumiu o início.' : 'As demais etapas permanecem na mesma ordem.'}`);
+  };
+  const addStep = () => {
+    if (workflow.steps.length >= 100) return;
+    const next = defaultStep(config.agents[0]?.id ?? '');
+    updateWorkflow({ steps: [...workflow.steps, next] });
+    setSelectedStepId(next.id);
+    setViewMode('list');
+  };
+  const reachable = new Set<string>();
+  const stepById = new Map(workflow.steps.map((step) => [step.id, step]));
+  const queue = workflow.start && stepById.has(workflow.start) ? [workflow.start] : [];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    if (reachable.has(id)) continue;
+    reachable.add(id);
+    const step = stepById.get(id);
+    if (!step) continue;
+    for (const target of Object.values(step.transitions)) if (target && stepById.has(target) && !reachable.has(target)) queue.push(target);
+  }
+  const unreachableSteps = workflow.steps.filter((step) => !reachable.has(step.id));
+  const missingOutputs = workflow.steps.flatMap((step, index) => RESULT_STATUSES.filter((status) => !step.transitions[status]).map((status) => `${stepDisplayName(step, index, config)} · ${status}`));
+  const teamMismatches = config.projects.filter((project) => project.workflowId === workflow.id).flatMap((project) => workflow.steps.flatMap((step, index) => !project.agentIds.includes(step.agentId) ? `${stepDisplayName(step, index, config)} · ${project.name || 'projeto sem nome'}` : []));
+  const listSteps = selectedStepId && workflow.steps.some((step) => step.id === selectedStepId)
+    ? [workflow.steps.find((step) => step.id === selectedStepId)!, ...workflow.steps.filter((step) => step.id !== selectedStepId)]
+    : workflow.steps;
+  return <div className="editor-panel paper-panel workflow-editor"><div className="editor-title workflow-editor-title"><div><p className="eyebrow">mapa do workflow</p><h2>{workflow.name || 'Workflow sem nome'}</h2><p className="workflow-editor-subtitle">Arraste etapas, conecte resultados e revise os detalhes quando precisar.</p></div><div className="workflow-editor-actions"><button type="button" className="button button-quiet workflow-add-step" onClick={addStep} disabled={disabled || workflow.steps.length >= 100}><Plus size={14} /> Adicionar etapa</button><div className="workflow-view-toggle" role="tablist" aria-label="Visualização do workflow"><button type="button" role="tab" aria-selected={viewMode === 'map'} className={viewMode === 'map' ? 'is-active' : ''} onClick={() => setViewMode('map')} disabled={disabled} data-testid="workflow-map-tab"><Maximize2 size={14} /> Mapa</button><button type="button" role="tab" aria-selected={viewMode === 'list'} className={viewMode === 'list' ? 'is-active' : ''} onClick={() => setViewMode('list')} disabled={disabled} data-testid="workflow-list-tab"><ListChecks size={14} /> Lista</button></div><button type="button" className="icon-button icon-danger" title="Remover workflow" onClick={onRemove} disabled={disabled}><Trash2 size={17} /></button></div></div><div className="workflow-meta-grid"><label className="field-label">Nome<input value={workflow.name} onChange={(event) => updateWorkflow({ name: event.target.value })} disabled={disabled} /></label><label className="field-label">Máximo de passos<input type="number" min={1} value={workflow.maxSteps} onChange={(event) => updateWorkflow({ maxSteps: Number(event.target.value) || 1 })} disabled={disabled} /></label><label className="field-label">Começa em<select value={workflow.start} onChange={(event) => updateWorkflow({ start: event.target.value })} disabled={disabled}>{workflow.steps.map((step, index) => <option key={step.id} value={step.id}>Etapa {index + 1} · {stepDisplayName(step, index, config)}</option>)}</select></label></div>{viewMode === 'map' ? <div className="workflow-map-layout"><div className="workflow-map-main"><WorkflowCanvas workflow={workflow} config={config} selectedStepId={selectedStep?.id} onSelectStep={setSelectedStepId} onChangeSteps={(steps) => updateWorkflow({ steps })} onAddStep={addStep} canAddStep={workflow.steps.length < 100} disabled={disabled} /><WorkflowSummary workflow={workflow} config={config} /><div className="workflow-status-help"><strong>Como ler as saídas:</strong> <span>PASS passou · FAIL pede correção · DONE concluiu sem PASS/FAIL · ERROR encerrou com erro.</span><small>Ciclos de correção são permitidos e permanecem limitados pelo máximo de etapas.</small></div><WorkflowDiagnostics workflow={workflow} config={config} unreachableSteps={unreachableSteps} missingOutputs={missingOutputs} teamMismatches={teamMismatches} /></div><VisualWorkflowStepDetails step={selectedStep} index={selectedStep ? workflow.steps.indexOf(selectedStep) : -1} workflow={workflow} config={config} disabled={disabled} start={selectedStep?.id === workflow.start} onChange={(patch) => selectedStep && updateStep(selectedStep.id, patch)} onSetStart={() => selectedStep && updateWorkflow({ start: selectedStep.id })} onRemove={() => selectedStep && removeStepWithImpact(selectedStep.id)} /></div> : <div className="workflow-list-layout"><div className="steps-heading"><div><h3>Etapas do workflow</h3><p>Edite agentes, instruções e destinos com teclado.</p></div><button type="button" className="button button-quiet" onClick={addStep} disabled={disabled || workflow.steps.length >= 100}><Plus size={14} /> Adicionar passo</button></div>{removalImpact && <div className="workflow-removal-impact" role="status"><div><strong>Etapa removida; impacto registrado.</strong><p>{removalImpact} Revise o resumo das ligações antes de salvar.</p></div><div className="workflow-removal-actions"><button type="button" className="button button-text" onClick={() => setRemovalImpact('')}>Fechar aviso</button></div></div>}<div className="steps-list">{workflow.steps.length === 0 ? <div className="steps-empty"><GitBranch size={18} /> Adicione a primeira etapa.</div> : listSteps.map((step) => <WorkflowStepCard key={step.id} step={step} index={workflow.steps.indexOf(step)} steps={workflow.steps} config={config} start={workflow.start === step.id} disabled={disabled} onSelect={() => setSelectedStepId(step.id)} onChange={(patch) => updateStep(step.id, patch)} onRemove={() => removeStepWithImpact(step.id)} />)}</div><WorkflowDiagnostics workflow={workflow} config={config} unreachableSteps={unreachableSteps} missingOutputs={missingOutputs} teamMismatches={teamMismatches} /></div>}</div>;
+}
+
+function VisualWorkflowStepDetails({ step, index, workflow, config, disabled, start, onChange, onSetStart, onRemove }: { step?: Step; index: number; workflow: Workflow; config: Config; disabled: boolean; start: boolean; onChange: (patch: Partial<Step>) => void; onSetStart: () => void; onRemove: () => void }) {
+  if (!step) return <aside className="workflow-step-details paper-panel"><div className="empty-icon"><Pencil size={20} /></div><h3>Selecione uma etapa</h3><p>Escolha um bloco no mapa para editar seus detalhes.</p></aside>;
+  return <aside className="workflow-step-details paper-panel" aria-label="Detalhes da etapa"><div className="workflow-details-heading"><div><span className="small-label">detalhes da etapa</span><h3>{stepDisplayName(step, index, config)}</h3></div><span className="workflow-details-index">{index + 1}</span></div><div className="workflow-details-form"><label className="field-label">Agente<select value={step.agentId} onChange={(event) => onChange({ agentId: event.target.value })} disabled={disabled}><option value="">Escolha um agente</option>{config.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.role}</option>)}</select></label><label className="field-label">Instrução<textarea value={step.instruction} onChange={(event) => onChange({ instruction: event.target.value })} rows={6} placeholder="O que este agente deve fazer?" disabled={disabled} /></label><div className="workflow-detail-actions"><button type="button" className={`button ${start ? 'button-primary' : 'button-quiet'}`} onClick={onSetStart} disabled={disabled || start}>{start ? 'Etapa inicial' : 'Definir como início'}</button><button type="button" className="button button-quiet button-quiet-danger" onClick={onRemove} disabled={disabled || workflow.steps.length <= 1}><Trash2 size={14} /> Remover</button></div><div className="workflow-detail-transitions"><span className="small-label"><GitBranch size={13} /> destinos</span>{RESULT_STATUSES.map((status) => <label className="transition-field" key={status}><span className={`transition-chip transition-${status.toLowerCase()}`}>{status}</span><TransitionTargetSelect value={step.transitions[status] ?? ''} steps={workflow.steps} config={config} onChange={(next) => onChange({ transitions: { ...step.transitions, [status]: next || undefined } })} disabled={disabled} /></label>)}</div></div></aside>;
+}
+
 function WorkflowSummary({ workflow, config }: { workflow: Workflow; config: Config }) {
   const targetLabel = (target: string | undefined) => {
     if (target === 'done') return 'concluir';
@@ -1622,14 +1866,14 @@ function WorkflowDiagnostics({ workflow, config, unreachableSteps, missingOutput
   return <section className={`workflow-diagnostics ${hasProblems ? 'has-problems' : 'is-clear'}`} aria-live="polite"><div className="workflow-diagnostics-heading"><span className="small-label"><HeartPulse size={13} /> Diagnóstico do rascunho</span><strong>{hasProblems ? 'revisar antes de executar' : 'estrutura legível'}</strong></div>{!hasProblems ? <p>Nenhuma etapa inalcançável, equipe incompatível ou saída sem destino foi encontrada neste rascunho.</p> : <div className="workflow-diagnostics-list">{!workflow.start && <p><strong>Início ausente:</strong> escolha a etapa inicial.</p>}{unreachableSteps.length > 0 && <p><strong>Etapas inalcançáveis:</strong> {unreachableSteps.map((step, index) => stepDisplayName(step, workflow.steps.indexOf(step), config)).join(', ')}.</p>}{teamMismatches.length > 0 && <p><strong>Fora da equipe:</strong> {teamMismatches.join(', ')}.</p>}{missingAgents.length > 0 && <p><strong>Agente inexistente:</strong> {missingAgents.map((step) => stepDisplayName(step, workflow.steps.indexOf(step), config)).join(', ')}.</p>}{missingOutputs.length > 0 && <p><strong>Saídas sem destino:</strong> {missingOutputs.join(', ')}.</p>}</div>}</section>;
 }
 
-function WorkflowStepCard({ step, index, steps, config, start, onChange, onRemove }: { step: Step; index: number; steps: Step[]; config: Config; start: boolean; onChange: (patch: Partial<Step>) => void; onRemove: () => void }) {
+function WorkflowStepCard({ step, index, steps, config, start, disabled = false, onSelect, onChange, onRemove }: { step: Step; index: number; steps: Step[]; config: Config; start: boolean; disabled?: boolean; onSelect?: () => void; onChange: (patch: Partial<Step>) => void; onRemove: () => void }) {
   const transitions = RESULT_STATUSES.map((result) => [result, step.transitions[result] ?? ''] as const);
   const label = stepDisplayName(step, index, config);
-  return <article className={`workflow-step-card ${start ? 'is-start' : ''}`}><div className="step-card-top"><div className="step-number">{index + 1}</div><div><span className="step-kicker">{start ? 'Ponto de partida' : `Etapa ${index + 1}`}</span><h3>{label}</h3></div><button type="button" className="icon-button" title={steps.length <= 1 ? 'Um workflow precisa de pelo menos uma etapa' : 'Remover passo'} aria-label={steps.length <= 1 ? 'Um workflow precisa de pelo menos uma etapa' : `Remover etapa ${index + 1}`} onClick={onRemove} disabled={steps.length <= 1}><Trash2 size={15} /></button></div><label className="field-label">Agente<select value={step.agentId} onChange={(event) => onChange({ agentId: event.target.value })}><option value="">Escolha um agente</option>{config.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.role}</option>)}</select></label><label className="field-label">Instrução<textarea value={step.instruction} onChange={(event) => onChange({ instruction: event.target.value })} rows={3} placeholder="O que este agente deve fazer?" /></label><div className="transition-grid"><span className="transition-label"><GitBranch size={13} /> Saídas</span>{transitions.map(([result, target]) => <label key={result} className="transition-field"><span className={`transition-chip transition-${result.toLowerCase()}`}>{result}</span><TransitionTargetSelect value={target} steps={steps} config={config} onChange={(next) => onChange({ transitions: { ...step.transitions, [result]: next || undefined } })} /></label>)}</div></article>;
+  return <article className={`workflow-step-card ${start ? 'is-start' : ''}`} data-step-id={step.id} tabIndex={onSelect ? 0 : undefined} role={onSelect ? 'button' : undefined} aria-label={onSelect ? `Editar ${label}` : undefined} aria-current={start ? 'step' : undefined} onClick={onSelect} onFocus={onSelect} onKeyDown={(event) => { if (onSelect && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onSelect(); } }}><div className="step-card-top"><div className="step-number">{index + 1}</div><div><span className="step-kicker">{start ? 'Ponto de partida' : `Etapa ${index + 1}`}</span><h3>{label}</h3></div><button type="button" className="icon-button" title={steps.length <= 1 ? 'Um workflow precisa de pelo menos uma etapa' : 'Remover passo'} aria-label={steps.length <= 1 ? 'Um workflow precisa de pelo menos uma etapa' : `Remover etapa ${index + 1}`} onClick={(event) => { event.stopPropagation(); onRemove(); }} disabled={disabled || steps.length <= 1}><Trash2 size={15} /></button></div><label className="field-label">Agente<select value={step.agentId} onChange={(event) => onChange({ agentId: event.target.value })} disabled={disabled}><option value="">Escolha um agente</option>{config.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.role}</option>)}</select></label><label className="field-label">Instrução<textarea value={step.instruction} onChange={(event) => onChange({ instruction: event.target.value })} rows={3} placeholder="O que este agente deve fazer?" disabled={disabled} /></label><div className="transition-grid"><span className="transition-label"><GitBranch size={13} /> Saídas</span>{transitions.map(([result, target]) => <label key={result} className="transition-field"><span className={`transition-chip transition-${result.toLowerCase()}`}>{result}</span><TransitionTargetSelect value={target} steps={steps} config={config} disabled={disabled} onChange={(next) => onChange({ transitions: { ...step.transitions, [result]: next || undefined } })} /></label>)}</div></article>;
 }
 
-function TransitionTargetSelect({ value, steps, config, onChange }: { value: string; steps: Step[]; config: Config; onChange: (value: string) => void }) {
-  return <select className="transition-select" value={value} onChange={(event) => onChange(event.target.value)}><option value="">Sem destino</option><option value="done">Concluir workflow</option><option value="error">Encerrar com erro</option>{steps.map((step, index) => <option key={step.id} value={step.id}>Etapa {index + 1} · {stepDisplayName(step, index, config)}</option>)}</select>;
+function TransitionTargetSelect({ value, steps, config, disabled = false, onChange }: { value: string; steps: Step[]; config: Config; disabled?: boolean; onChange: (value: string) => void }) {
+  return <select className="transition-select" value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled}><option value="">Sem destino</option><option value="done">Concluir workflow</option><option value="error">Encerrar com erro</option>{steps.map((step, index) => <option key={step.id} value={step.id}>Etapa {index + 1} · {stepDisplayName(step, index, config)}</option>)}</select>;
 }
 
 function EmptyResource({ icon: Icon, text }: { icon: typeof UsersRound; text: string }) {

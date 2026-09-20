@@ -10,7 +10,7 @@ Aplicação web local para Linux que permite cadastrar agentes de IA, configurar
 
 O usuário prioriza funcionamento, simplicidade, confiabilidade, manutenção e custo, antes da aparência. A imagem fornecida é apenas uma referência: não reproduzir exatamente. Usar **Frontend Design** para orientação visual; **não usar Impeccable** neste projeto, conforme correção explícita do usuário.
 
-Sem Electron, cloud, multiusuário, autenticação, banco pesado, framework multiagente, RAG ou editor drag-and-drop sofisticado nesta versão.
+Sem Electron, cloud, multiusuário, autenticação, banco pesado, framework multiagente ou RAG. Editor visual de workflow com drag-and-drop autorizado na extensão abaixo.
 
 ## Organização do trabalho e modelos
 
@@ -202,3 +202,47 @@ Solicitado em 20/09/2026. A extensão deve preservar configurações existentes 
 - [x] Executar `npm test`, `npm run build` e `npx tsx tests/browser.mjs`; registrar evidências e limitações reais.
 
 Evidência final: `npm test` passou com **52/52**, `npm run build` passou e `npx tsx tests/browser.mjs` passou em Chromium isolado, desktop e 390 px. Um Luna Max independente ampliou o teste de navegador e comprovou Cancelar, foco e Escape, Aplicar, salvamento aceito pelo servidor, recarga, retrato, figura, fallback legado e movimento reduzido. Capturas finais foram inspecionadas em `artifacts/validation-desktop.png` e `artifacts/validation-mobile.png`. Nenhuma rede ou chamada de IA foi usada pelos avatares ou pela validação.
+
+## Skin Flash Benefícios alternativa — concluída
+
+Solicitada em 20/09/2026. A alteração é visual e deve preservar todos os fluxos, contratos e dados existentes.
+
+- [x] Confirmar a identidade pública atual no site oficial da Flash.
+- [x] Incorporar localmente a logo SVG oficial encontrada no site público.
+- [x] Aplicar paleta, hierarquia, navegação e superfícies inspiradas na Flash.
+- [x] Validar build, testes e interface em desktop e mobile.
+
+Evidência histórica: trabalho isolado na branch `feature/flash-skin`; `npm test` passou com **52/52**, `npm run build` passou e `npx tsx tests/browser.mjs` passou em Chromium com capturas desktop e 390 px inspecionadas. A logo foi obtida do SVG público usado no cabeçalho do site oficial da Flash. Após a definição da marca própria, ela foi movida para `public/brands/flash/logo.svg` e passou a ser somente uma alternativa selecionável, preservando funcionamento offline. A skin não altera runner, persistência ou fluxos de execução.
+
+## Editor visual de workflows — concluído
+
+Solicitado em 20/09/2026: canvas semelhante ao draw.io, com etapas arrastáveis e conexões entre etapas. Implementação e testes delegados a agentes Luna Max separados.
+
+- [x] Canvas com arraste de etapas, conexões por PASS/FAIL/DONE/ERROR, terminais de sucesso/erro, zoom e organização.
+- [x] Edição de agente/instrução/transições, inclusão e remoção de etapas, alternativa por teclado e bloqueio durante execução.
+- [x] Posições opcionais persistidas com validação e compatibilidade com workflows existentes.
+- [x] Testes independentes e navegador real com fixtures temporários, desktop e mobile; capturas e evidências.
+- [x] Atualizar documentação e registrar os resultados reais.
+
+Evidência final: um Luna Max implementou a interface e outro Luna Max validou de forma independente. `npm test` passou com **55/55**, `npm run build` passou, `npx tsx tests/workflow-browser.mjs` passou e a regressão `npx tsx tests/browser.mjs` passou. O Chromium isolado comprovou arraste, conexões por drag e clique, terminais, ciclos, remoção, início, zoom, organização, salvamento/recarga, bloqueio durante run e viewport de 390 px. Capturas inspecionadas: `artifacts/workflow-editor-desktop.png` e `artifacts/workflow-editor-mobile.png`. Os testes usaram fixtures Node locais, sem chamada de IA autenticada.
+
+## Identidade visual configurável — concluída
+
+Solicitada em 20/09/2026. A extensão permite personalização global sem rede; a revisão posterior definiu Agent Office como fallback e manteve Flash somente como alternativa.
+
+- [x] Persistir cores primária/secundária e logo embutida com validação e compatibilidade legada.
+- [x] Aplicar tokens de tema e contraste de texto calculado em toda a interface.
+- [x] Criar tela Aparência com prévia, upload, remoção da logo e restauração do padrão.
+- [x] Cobrir round-trip, entradas inválidas, desktop e mobile sem regressões.
+
+Evidência final anterior: `npm test` passou com **57/57**, `npm run build` passou, `npx tsx tests/branding-browser.mjs` passou em Chromium desktop e 390 px e as regressões `npx tsx tests/browser.mjs` e `npx tsx tests/workflow-browser.mjs` passaram. A validação dedicada comprovou prévia ao vivo, contraste automático, upload SVG, persistência/recarga, retorno da logo ao padrão e restauração completa sem `branding` redundante. PNG, JPEG, WebP e SVG são aceitos até 512 KB; URLs remotas e CSS não são aceitos.
+
+### Marca própria padrão — concluída
+
+- [x] Criar logo vetorial Agent Office e paleta própria azul-violeta/azul-noturno.
+- [x] Usar essa identidade quando `branding` estiver ausente, sem persistir configuração redundante.
+- [x] Isolar a marca Flash em `public/brands/flash/` e oferecê-la somente como preset alternativo.
+- [x] Manter cores e logo personalizadas, validação local e compatibilidade de configurações existentes.
+- [x] Reexecutar testes, build e fluxos Chromium desktop/mobile; inspecionar as capturas da marca padrão.
+
+Evidência final da revisão: `npm test` passou com **57/57**, `npm run build` passou e os fluxos `npx tsx tests/branding-browser.mjs`, `npx tsx tests/browser.mjs` e `npx tsx tests/workflow-browser.mjs` passaram. A rodada dedicada comprovou Agent Office como fallback, Flash como asset alternativo, troca de presets, personalização, persistência, restauração sem `branding` redundante e ausência de overflow em 1440×1000 e 390×844. Capturas padrão inspecionadas: `artifacts/branding-default-desktop.png` e `artifacts/branding-default-mobile.png`.
