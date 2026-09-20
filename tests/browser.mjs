@@ -121,6 +121,24 @@ async function apiState(baseUrl) {
   return response.json();
 }
 
+async function saveConfigViaApi(baseUrl, config, expectedRevision) {
+  const response = await fetch(`${baseUrl}/api/config`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ config, expectedRevision }),
+  });
+  const body = await response.text();
+  let payload;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    payload = body;
+  }
+  if (!response.ok)
+    throw new Error(`config save failed (${response.status}): ${body}`);
+  return payload;
+}
+
 async function waitForPidCount(file, count, timeout = 5_000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -288,6 +306,8 @@ async function assertTextContrast(page) {
 }
 
 async function assertReducedMotion(page) {
+  const isNearZeroDuration = (duration) =>
+    duration === "0s" || duration === "0.001ms" || duration === "1e-06s";
   await page.emulateMedia({ reducedMotion: "reduce" });
   requireCondition(
     await page.evaluate(
@@ -301,9 +321,27 @@ async function assertReducedMotion(page) {
       elements.map((element) => getComputedStyle(element).animationDuration),
     );
   requireCondition(
-    animated.every((duration) => duration === "0.001ms" || duration === "0s"),
+    animated.every(isNearZeroDuration),
     `reduced motion left long animations active: ${animated.join(", ")}`,
   );
+  const illustratedAvatar = page
+    .locator('.agent-avatar[data-avatar-mode="illustrated"]')
+    .first();
+  if ((await illustratedAvatar.count()) > 0) {
+    const reducedAvatarDuration = await illustratedAvatar.evaluate((element) => {
+      element.classList.add("is-working");
+      const illustration = element.querySelector(".illustrated-avatar");
+      const duration = illustration
+        ? getComputedStyle(illustration).animationDuration
+        : "0s";
+      element.classList.remove("is-working");
+      return duration;
+    });
+    requireCondition(
+      isNearZeroDuration(reducedAvatarDuration),
+      `reduced motion left avatar animation active: ${reducedAvatarDuration}`,
+    );
+  }
 }
 
 const baseUrl = await waitForServer();
@@ -358,6 +396,211 @@ try {
   await waitForText(desktop, "Equipe");
   await configureAgent(desktop, "Developer", process.execPath, root, true);
   await configureAgent(desktop, "Tester", process.execPath, root);
+
+  // The avatar builder is a draft editor: changing pieces and cancelling must
+  // leave the selected agent's appearance untouched. Then apply a preset and
+  // a few explicit pieces/colors, save through the real UI route, and verify
+  // the server accepted the versioned appearance before and after reload.
+  await selectResource(desktop, "Developer");
+  const developerAvatarSetting = desktop.locator(".agent-avatar-setting").first();
+  const initialDeveloperMode = await developerAvatarSetting
+    .locator(".agent-avatar")
+    .getAttribute("data-avatar-mode");
+  requireCondition(
+    initialDeveloperMode === "illustrated",
+    `default Developer avatar was not illustrated: ${initialDeveloperMode}`,
+  );
+  const initialDeveloperSvg = await developerAvatarSetting
+    .locator(".agent-avatar svg")
+    .innerHTML();
+  await developerAvatarSetting
+    .getByRole("button", { name: /Editar boneco|Montar boneco/ })
+    .click();
+  const avatarDialog = desktop.getByRole("dialog", { name: "Montar boneco" });
+  await avatarDialog.waitFor({ state: "visible" });
+  requireCondition(
+    await desktop.evaluate(
+      () => document.activeElement?.getAttribute("role") === "dialog",
+    ),
+    "avatar dialog did not receive initial keyboard focus",
+  );
+  const initialBuilderSvg = await avatarDialog
+    .locator(".avatar-builder-preview-avatar svg")
+    .innerHTML();
+  await avatarDialog
+    .locator(".avatar-preset")
+    .filter({ hasText: "Pesquisa" })
+    .click();
+  await avatarDialog
+    .getByRole("button", { name: "Cacheado", exact: true })
+    .click();
+  await avatarDialog
+    .getByRole("button", { name: "Cobre", exact: true })
+    .click();
+  await avatarDialog
+    .getByRole("button", { name: "Óculos", exact: true })
+    .click();
+  const changedBuilderSvg = await avatarDialog
+    .locator(".avatar-builder-preview-avatar svg")
+    .innerHTML();
+  requireCondition(
+    changedBuilderSvg !== initialBuilderSvg,
+    "avatar piece/color changes did not update the live preview",
+  );
+  await avatarDialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await avatarDialog.waitFor({ state: "hidden" });
+  requireCondition(
+    (await developerAvatarSetting.locator(".agent-avatar svg").innerHTML()) ===
+      initialDeveloperSvg,
+    "cancelling the avatar builder changed the local appearance draft",
+  );
+
+  // Exercise the modal's keyboard trap in a fresh draft, then Escape must
+  // close it without applying the draft.
+  await developerAvatarSetting
+    .getByRole("button", { name: /Editar boneco|Montar boneco/ })
+    .click();
+  const keyboardAvatarDialog = desktop.getByRole("dialog", { name: "Montar boneco" });
+  await keyboardAvatarDialog.waitFor({ state: "visible" });
+  const firstAvatarButton = keyboardAvatarDialog.locator("button:not(:disabled)").first();
+  const lastAvatarButton = keyboardAvatarDialog.locator("button:not(:disabled)").last();
+  await firstAvatarButton.focus();
+  await desktop.keyboard.press("Shift+Tab");
+  requireCondition(
+    await desktop.evaluate(
+      () => document.activeElement?.textContent?.includes("Aplicar avatar") === true,
+    ),
+    "Shift+Tab escaped the avatar dialog instead of wrapping to the last action",
+  );
+  await lastAvatarButton.focus();
+  await desktop.keyboard.press("Tab");
+  requireCondition(
+    await desktop.evaluate(
+      () => document.activeElement?.textContent?.includes("Surpreenda-me") === true,
+    ),
+    "Tab escaped the avatar dialog instead of wrapping to the first action",
+  );
+  await desktop.keyboard.press("Escape");
+  await keyboardAvatarDialog.waitFor({ state: "hidden" });
+
+  await developerAvatarSetting
+    .getByRole("button", { name: /Editar boneco|Montar boneco/ })
+    .click();
+  const appliedAvatarDialog = desktop.getByRole("dialog", { name: "Montar boneco" });
+  await appliedAvatarDialog.waitFor({ state: "visible" });
+  await appliedAvatarDialog
+    .locator(".avatar-preset")
+    .filter({ hasText: "Construção" })
+    .click();
+  await appliedAvatarDialog
+    .getByRole("button", { name: "Headset", exact: true })
+    .click();
+  await appliedAvatarDialog
+    .getByRole("button", { name: "Cobalto", exact: true })
+    .click();
+  await appliedAvatarDialog
+    .getByRole("button", { name: "Verde vidro", exact: true })
+    .click();
+  await appliedAvatarDialog
+    .getByRole("button", { name: "Aplicar avatar", exact: true })
+    .click();
+  await appliedAvatarDialog.waitFor({ state: "hidden" });
+  const appliedDeveloperSvg = await developerAvatarSetting
+    .locator(".agent-avatar svg")
+    .innerHTML();
+  requireCondition(
+    appliedDeveloperSvg !== initialDeveloperSvg,
+    "applying the avatar preset did not update the Team portrait draft",
+  );
+  await desktop
+    .getByRole("button", { name: "Salvar mudanças", exact: true })
+    .click();
+  await waitForText(desktop, "Tudo salvo");
+  const avatarSavedState = await apiState(baseUrl);
+  const savedDeveloperAvatar = avatarSavedState.config.agents.find(
+    (agent) => agent.id === "developer",
+  );
+  requireCondition(
+    savedDeveloperAvatar?.appearance?.outfit === "hoodie" &&
+      savedDeveloperAvatar.appearance.accessory === "headset" &&
+      savedDeveloperAvatar.appearance.backgroundColor === "#E8F3EC",
+    "server did not persist the applied avatar appearance",
+  );
+  const savedDeveloperSvg = appliedDeveloperSvg;
+
+  await desktop.reload({ waitUntil: "networkidle" });
+  await waitForText(desktop, "O trabalho acontece aqui.");
+  await desktop.getByRole("button", { name: "Team", exact: true }).click();
+  await waitForText(desktop, "Equipe");
+  await selectResource(desktop, "Developer");
+  const reloadedDeveloperAvatarSetting = desktop
+    .locator(".agent-avatar-setting")
+    .first();
+  requireCondition(
+    (await reloadedDeveloperAvatarSetting
+      .locator(".agent-avatar")
+      .getAttribute("data-avatar-mode")) === "illustrated",
+    "reloaded Developer avatar did not render as illustrated",
+  );
+  requireCondition(
+    (await reloadedDeveloperAvatarSetting
+      .locator(".agent-avatar svg")
+      .innerHTML()) === savedDeveloperSvg,
+    "reloaded Team portrait did not retain the saved appearance",
+  );
+
+  // The office and inspector must use the same saved boneco, with a figure
+  // variant in a room and a portrait variant in the agent inspector.
+  await desktop.getByRole("button", { name: "Run", exact: true }).click();
+  await waitForText(desktop, "O trabalho acontece aqui.");
+  const developerRoomButton = desktop
+    .locator(".room-avatar-button")
+    .filter({ hasText: "Developer" })
+    .first();
+  await developerRoomButton.waitFor({ state: "visible" });
+  const developerFigure = developerRoomButton.locator(
+    '.agent-avatar-figure[data-avatar-mode="illustrated"]',
+  );
+  await developerFigure.waitFor({ state: "visible" });
+  await developerRoomButton.click();
+  await desktop
+    .locator('.agent-inspector .agent-avatar[data-avatar-mode="illustrated"]')
+    .waitFor({ state: "visible" });
+
+  // Convert one saved agent to the optional legacy shape through the actual
+  // server API. This emulates opening a pre-avatar-builder workspace and keeps
+  // the assertion independent from whatever defaults happen to ship later.
+  const beforeLegacyState = await apiState(baseUrl);
+  const legacyConfig = structuredClone(beforeLegacyState.config);
+  const legacyAgent = legacyConfig.agents.find((agent) => agent.id === "tester");
+  requireCondition(Boolean(legacyAgent), "could not identify Tester for legacy fallback");
+  const expectedLegacyInitials = (legacyAgent.avatar || legacyAgent.name)
+    .replace(/[^\p{L}\p{N}]/gu, "")
+    .slice(0, 2)
+    .toUpperCase();
+  delete legacyAgent.appearance;
+  await saveConfigViaApi(
+    baseUrl,
+    legacyConfig,
+    beforeLegacyState.configRevision,
+  );
+  await desktop.reload({ waitUntil: "networkidle" });
+  await waitForText(desktop, "O trabalho acontece aqui.");
+  await desktop.getByRole("button", { name: "Team", exact: true }).click();
+  await waitForText(desktop, "Equipe");
+  await selectResource(desktop, "Tester");
+  const legacyAvatarSetting = desktop.locator(".agent-avatar-setting").first();
+  requireCondition(
+    (await legacyAvatarSetting
+      .locator(".agent-avatar")
+      .getAttribute("data-avatar-mode")) === "legacy",
+    "agent without appearance did not use the legacy avatar renderer",
+  );
+  requireCondition(
+    (await legacyAvatarSetting.locator(".agent-avatar text").textContent()) ===
+      expectedLegacyInitials,
+    "legacy avatar did not display the configured initials fallback",
+  );
 
   // An invalid JSON draft on an unreferenced agent must disappear with the agent and
   // must not block saving the remaining valid configuration.
@@ -982,6 +1225,20 @@ try {
     await mobile.getByRole("button", { name: navLabel, exact: true }).click();
     await waitForText(mobile, heading);
     await assertNoMobileOverflow(mobile, navLabel);
+    if (navLabel === "Team") {
+      await selectResource(mobile, "Developer");
+      const mobileAvatarSetting = mobile.locator(".agent-avatar-setting").first();
+      await mobileAvatarSetting
+        .getByRole("button", { name: /Editar boneco|Montar boneco/ })
+        .click();
+      const mobileAvatarDialog = mobile.getByRole("dialog", {
+        name: "Montar boneco",
+      });
+      await mobileAvatarDialog.waitFor({ state: "visible" });
+      await assertNoMobileOverflow(mobile, "Team avatar editor");
+      await mobile.keyboard.press("Escape");
+      await mobileAvatarDialog.waitFor({ state: "hidden" });
+    }
   }
   await mobile.goto(baseUrl, { waitUntil: "networkidle" });
   await waitForText(mobile, "O trabalho acontece aqui.");

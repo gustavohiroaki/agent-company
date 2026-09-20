@@ -16,12 +16,25 @@ import type {
   AgentResult,
   AgentMessage,
   AgentRuntime,
+  AvatarAppearance,
   Config,
   Run,
   RunHistoryEntry,
   Snapshot,
   StepAttempt,
   TimelineEvent,
+} from "../shared/types.js";
+import {
+  AVATAR_ACCESSORIES,
+  AVATAR_APPEARANCE_VERSION,
+  AVATAR_BACKGROUND_COLORS,
+  AVATAR_EXPRESSIONS,
+  AVATAR_FACES,
+  AVATAR_HAIR_COLORS,
+  AVATAR_HAIR_STYLES,
+  AVATAR_OUTFIT_COLORS,
+  AVATAR_OUTFITS,
+  AVATAR_SKIN_TONES,
 } from "../shared/types.js";
 
 export const HISTORY_VERSION = 2;
@@ -69,6 +82,81 @@ function id(value: unknown) {
   assert(
     typeof value === "string" && /^[a-zA-Z0-9_-]{1,64}$/.test(value),
     "ID inválido. Use letras, números, _ ou -.",
+  );
+}
+
+function oneOf<const T extends readonly string[]>(
+  value: unknown,
+  options: T,
+): value is T[number] {
+  return typeof value === "string" && options.includes(value);
+}
+
+const AVATAR_APPEARANCE_FIELDS = [
+  "version",
+  "skinTone",
+  "face",
+  "expression",
+  "hairStyle",
+  "hairColor",
+  "outfit",
+  "outfitColor",
+  "accessory",
+  "backgroundColor",
+] as const;
+
+/**
+ * Validate the serializable avatar contract at the persistence boundary.
+ *
+ * This intentionally rejects extra keys as well as unknown option/color
+ * values. In particular, no SVG, CSS declaration, URL, or arbitrary markup
+ * can enter the configuration through an Agent object.
+ */
+export function validateAvatarAppearance(
+  value: unknown,
+  field = "Aparência",
+): asserts value is AvatarAppearance {
+  assert(isRecord(value), `${field}: objeto inválido.`);
+  const keys = Object.keys(value);
+  assert(
+    keys.length === AVATAR_APPEARANCE_FIELDS.length &&
+      AVATAR_APPEARANCE_FIELDS.every((key) => Object.prototype.hasOwnProperty.call(value, key)) &&
+      keys.every((key) => (AVATAR_APPEARANCE_FIELDS as readonly string[]).includes(key)),
+    `${field}: campos inválidos.`,
+  );
+  assert(
+    value.version === AVATAR_APPEARANCE_VERSION,
+    `${field}.version inválida.`,
+  );
+  assert(
+    oneOf(value.skinTone, AVATAR_SKIN_TONES),
+    `${field}.skinTone inválido.`,
+  );
+  assert(oneOf(value.face, AVATAR_FACES), `${field}.face inválido.`);
+  assert(
+    oneOf(value.expression, AVATAR_EXPRESSIONS),
+    `${field}.expression inválida.`,
+  );
+  assert(
+    oneOf(value.hairStyle, AVATAR_HAIR_STYLES),
+    `${field}.hairStyle inválido.`,
+  );
+  assert(
+    oneOf(value.hairColor, AVATAR_HAIR_COLORS),
+    `${field}.hairColor inválido.`,
+  );
+  assert(oneOf(value.outfit, AVATAR_OUTFITS), `${field}.outfit inválido.`);
+  assert(
+    oneOf(value.outfitColor, AVATAR_OUTFIT_COLORS),
+    `${field}.outfitColor inválido.`,
+  );
+  assert(
+    oneOf(value.accessory, AVATAR_ACCESSORIES),
+    `${field}.accessory inválido.`,
+  );
+  assert(
+    oneOf(value.backgroundColor, AVATAR_BACKGROUND_COLORS),
+    `${field}.backgroundColor inválido.`,
   );
 }
 
@@ -397,6 +485,8 @@ export function validateConfig(value: unknown): asserts value is Config {
     assert(a.name.trim(), "Informe o nome do agente.");
     str(a.role, "Papel", 200);
     str(a.avatar, "Avatar", 40);
+    if (a.appearance !== undefined)
+      validateAvatarAppearance(a.appearance, `Aparência do agente ${a.id}`);
     assert(areas.includes(a.area), "Área inválida.");
     str(a.cli, "CLI", 4096);
     assert(a.cli.trim(), "Informe um executável de CLI.");

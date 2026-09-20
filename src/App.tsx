@@ -71,6 +71,7 @@ import type {
   TimelineEvent,
   Workflow,
 } from '../shared/types';
+import { AgentAvatar, AvatarBuilderDialog, presetForAgent } from './avatar';
 
 type Screen = 'run' | 'projects' | 'team' | 'workflow';
 type ConnectionState = 'connecting' | 'connected' | 'offline';
@@ -124,6 +125,7 @@ const defaultAgentTemplates: Agent[] = [
     cwd: '',
     instructions: 'Quebre o objetivo em etapas pequenas, identifique riscos e deixe o caminho claro para a equipe.',
     timeoutMs: 120000,
+    appearance: presetForAgent(0),
   },
   {
     id: 'developer-template',
@@ -137,6 +139,7 @@ const defaultAgentTemplates: Agent[] = [
     cwd: '',
     instructions: 'Implemente a mudança com passos pequenos, rode as verificações e registre o que mudou.',
     timeoutMs: 180000,
+    appearance: presetForAgent(2),
   },
   {
     id: 'tester-template',
@@ -150,6 +153,7 @@ const defaultAgentTemplates: Agent[] = [
     cwd: '',
     instructions: 'Teste os caminhos importantes, reproduza falhas e registre evidências objetivas.',
     timeoutMs: 120000,
+    appearance: presetForAgent(1),
   },
   {
     id: 'reviewer-template',
@@ -163,6 +167,7 @@ const defaultAgentTemplates: Agent[] = [
     cwd: '',
     instructions: 'Revise a entrega com atenção a regressões, acessibilidade e clareza. Aponte riscos concretos.',
     timeoutMs: 120000,
+    appearance: presetForAgent(3),
   },
   {
     id: 'researcher-template',
@@ -176,6 +181,7 @@ const defaultAgentTemplates: Agent[] = [
     cwd: '',
     instructions: 'Investigue o contexto, reúna evidências e deixe as fontes claras para a próxima pessoa.',
     timeoutMs: 120000,
+    appearance: presetForAgent(1),
   },
 ];
 
@@ -337,6 +343,7 @@ function blankAgent(index = 1): Agent {
     cwd: '',
     instructions: '',
     timeoutMs: 120000,
+    appearance: presetForAgent(index - 1),
   };
 }
 
@@ -1346,7 +1353,7 @@ function RoomCard({ area, agents, runtimes, selectedAgentId, activeAgentId, proj
           const isSelected = selectedAgentId === agent.id;
           const isActive = activeAgentId === agent.id;
           const inProject = projectRuntimeIds.has(agent.id);
-          return <button type="button" key={agent.id} className={`room-avatar-button ${isSelected ? 'is-selected' : ''} ${isActive ? 'is-active' : ''} ${!inProject ? 'is-muted' : ''}`} aria-current={isActive ? 'step' : undefined} onClick={() => onSelectAgent(agent.id)} title={`${agent.name} · ${isActive ? 'etapa atual · ' : ''}${statusLabel(runtime?.status)}`}><Avatar agent={agent} runtime={runtime} size="small" /><span className="room-agent-meta"><strong>{agent.name}</strong>{isActive && <em>atual</em>}<small>{statusLabel(runtime?.status ?? 'Idle')}</small></span></button>;
+          return <button type="button" key={agent.id} className={`room-avatar-button ${isSelected ? 'is-selected' : ''} ${isActive ? 'is-active' : ''} ${!inProject ? 'is-muted' : ''}`} aria-current={isActive ? 'step' : undefined} onClick={() => onSelectAgent(agent.id)} title={`${agent.name} · ${isActive ? 'etapa atual · ' : ''}${statusLabel(runtime?.status)}`}><AgentAvatar agent={agent} runtime={runtime} size="small" variant="figure" pose={isActive ? 'working' : 'idle'} /><span className="room-agent-meta"><strong>{agent.name}</strong>{isActive && <em>atual</em>}<small>{statusLabel(runtime?.status ?? 'Idle')}</small></span></button>;
         })}
       </div>
     </article>
@@ -1368,8 +1375,7 @@ function TeamDock({ agents, runtimes, selectedAgentId, activeAgentId, onSelectAg
 }
 
 function Avatar({ agent, runtime, size = 'medium' }: { agent: Agent; runtime?: AgentRuntime; size?: 'small' | 'medium' | 'large' }) {
-  const hue = colorForAgent(agent.id);
-  return <span className={`avatar avatar-${size}`} style={{ '--avatar-hue': hue } as React.CSSProperties}><span>{initials(agent)}</span>{runtime && runtime.status !== 'Idle' && <i className={`avatar-presence ${statusMeta[runtime.status].className}`} />}</span>;
+  return <AgentAvatar agent={agent} runtime={runtime} size={size} />;
 }
 
 function colorForAgent(id: string): string {
@@ -1535,6 +1541,7 @@ function TeamScreen({ config, snapshot, selectedId, argsModes, argsErrors, onSel
 }
 
 function AgentEditor({ agent, onChange, mode, argsError, onMode, onArgsError, onRemove }: { agent: Agent; onChange: (updater: (config: Config) => Config) => void; mode: ArgsMode; argsError?: string; onMode: (mode: ArgsMode) => void; onArgsError: (message: string) => void; onRemove: () => void }) {
+  const [avatarEditorOpen, setAvatarEditorOpen] = useState(false);
   const update = (patch: Partial<Agent>) => onChange((draft) => ({ ...draft, agents: draft.agents.map((item) => item.id === agent.id ? { ...item, ...patch } : item) }));
   const argsText = (args: string[]) => mode === 'json' ? JSON.stringify(args, null, 2) : args.join('\n');
   const [rawArgs, setRawArgs] = useState(() => argsText(agent.args));
@@ -1549,7 +1556,7 @@ function AgentEditor({ agent, onChange, mode, argsError, onMode, onArgsError, on
     onArgsError('');
     update({ args: parsed });
   };
-  return <div className="editor-panel paper-panel"><div className="editor-title"><div className="editor-person-title"><Avatar agent={agent} size="medium" /><div><p className="eyebrow">perfil do agente</p><h2>{agent.name || 'Agente sem nome'}</h2></div></div><button type="button" className="icon-button icon-danger" title="Remover agente" onClick={onRemove}><Trash2 size={17} /></button></div><div className="form-stack"><div className="form-two-col"><label className="field-label">Nome<input value={agent.name} onChange={(event) => update({ name: event.target.value })} /></label><label className="field-label">Função<input value={agent.role} onChange={(event) => update({ role: event.target.value })} /></label></div><div className="form-two-col"><label className="field-label">Sala<select value={agent.area} onChange={(event) => update({ area: event.target.value as Area })}>{AREAS.map((area) => <option key={area} value={area}>{area}</option>)}</select></label><label className="field-label">Avatar<input value={agent.avatar} onChange={(event) => update({ avatar: event.target.value })} maxLength={4} placeholder="AB" /></label></div><div className="form-two-col"><label className="field-label">CLI<input value={agent.cli} onChange={(event) => update({ cli: event.target.value })} /></label><label className="field-label">Modelo<input value={agent.model} onChange={(event) => update({ model: event.target.value })} /></label></div><label className="field-label">Diretório padrão<input value={agent.cwd} onChange={(event) => update({ cwd: event.target.value })} /></label><label className="field-label">Instruções<textarea value={agent.instructions} onChange={(event) => update({ instructions: event.target.value })} rows={6} placeholder="Como este agente deve trabalhar…" /></label><details className="advanced-details"><summary>Avançado <ChevronDown size={14} /></summary><div className="advanced-content"><label className="field-label">Timeout (ms)<input type="number" min={1000} value={agent.timeoutMs} onChange={(event) => update({ timeoutMs: Number(event.target.value) || 1000 })} /></label><div className="field-label args-field"><div className="field-label-row"><span>Argumentos</span><div className="segmented-control"><button type="button" className={mode === 'lines' ? 'is-active' : ''} onClick={() => onMode('lines')}><FileText size={13} /> Linhas</button><button type="button" className={mode === 'json' ? 'is-active' : ''} onClick={() => onMode('json')}><Braces size={13} /> JSON</button></div></div><textarea value={rawArgs} onChange={(event) => onArgsChange(event.target.value)} rows={4} className={argsError ? 'has-error' : ''} />{argsError && <span className="field-error">{argsError}</span>}</div></div></details></div></div>;
+  return <div className="editor-panel paper-panel"><div className="editor-title"><div className="editor-person-title"><Avatar agent={agent} size="medium" /><div><p className="eyebrow">perfil do agente</p><h2>{agent.name || 'Agente sem nome'}</h2></div></div><button type="button" className="icon-button icon-danger" title="Remover agente" onClick={onRemove}><Trash2 size={17} /></button></div><div className="form-stack"><section className="agent-avatar-setting" aria-labelledby="agent-avatar-setting-title"><div className="agent-avatar-setting-preview"><AgentAvatar agent={agent} size="large" label={`Prévia do boneco de ${agent.name || 'agente'}`} /></div><div className="agent-avatar-setting-copy"><span className="small-label" id="agent-avatar-setting-title">identidade visual</span><strong>{agent.appearance ? 'Boneco personalizado' : 'Iniciais legadas'}</strong><p>{agent.appearance ? 'Este retrato também aparece na planta do escritório.' : 'Este agente ainda usa as iniciais. Você pode criar um boneco local.'}</p><button type="button" className="button button-quiet" onClick={() => setAvatarEditorOpen(true)}><WandSparkles size={14} /> {agent.appearance ? 'Editar boneco' : 'Montar boneco'}</button></div></section><div className="form-two-col"><label className="field-label">Nome<input value={agent.name} onChange={(event) => update({ name: event.target.value })} /></label><label className="field-label">Função<input value={agent.role} onChange={(event) => update({ role: event.target.value })} /></label></div><div className="form-two-col"><label className="field-label">Sala<select value={agent.area} onChange={(event) => update({ area: event.target.value as Area })}>{AREAS.map((area) => <option key={area} value={area}>{area}</option>)}</select></label><label className="field-label">Iniciais de fallback<input value={agent.avatar} onChange={(event) => update({ avatar: event.target.value })} maxLength={4} placeholder="AB" /></label></div><div className="form-two-col"><label className="field-label">CLI<input value={agent.cli} onChange={(event) => update({ cli: event.target.value })} /></label><label className="field-label">Modelo<input value={agent.model} onChange={(event) => update({ model: event.target.value })} /></label></div><label className="field-label">Diretório padrão<input value={agent.cwd} onChange={(event) => update({ cwd: event.target.value })} /></label><label className="field-label">Instruções<textarea value={agent.instructions} onChange={(event) => update({ instructions: event.target.value })} rows={6} placeholder="Como este agente deve trabalhar…" /></label><details className="advanced-details"><summary>Avançado <ChevronDown size={14} /></summary><div className="advanced-content"><label className="field-label">Timeout (ms)<input type="number" min={1000} value={agent.timeoutMs} onChange={(event) => update({ timeoutMs: Number(event.target.value) || 1000 })} /></label><div className="field-label args-field"><div className="field-label-row"><span>Argumentos</span><div className="segmented-control"><button type="button" className={mode === 'lines' ? 'is-active' : ''} onClick={() => onMode('lines')}><FileText size={13} /> Linhas</button><button type="button" className={mode === 'json' ? 'is-active' : ''} onClick={() => onMode('json')}><Braces size={13} /> JSON</button></div></div><textarea value={rawArgs} onChange={(event) => onArgsChange(event.target.value)} rows={4} className={argsError ? 'has-error' : ''} />{argsError && <span className="field-error">{argsError}</span>}</div></div></details></div>{avatarEditorOpen && <AvatarBuilderDialog agent={agent} onCancel={() => setAvatarEditorOpen(false)} onApply={(appearance) => { update({ appearance }); setAvatarEditorOpen(false); }} />}</div>;
 }
 
 function WorkflowScreen({ config, selectedId, onSelect, onChange, onAdd, onRemove }: { config: Config; selectedId: string; onSelect: (id: string) => void; onChange: (updater: (config: Config) => Config) => void; onAdd: () => void; onRemove: (id: string) => void }) {

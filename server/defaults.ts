@@ -1,6 +1,95 @@
-import type { Agent, Config, Workflow } from "../shared/types.js";
+import type { Agent, AvatarAppearance, Config, Workflow } from "../shared/types.js";
+
+/**
+ * Stable presets for the shipped team. Keep these as data (rather than a
+ * random generator) so a first load and a recreated local workspace have the
+ * same visual identity for each standard role.
+ */
+export const DEFAULT_AVATAR_APPEARANCE: AvatarAppearance = {
+  version: 1,
+  skinTone: "#E7AD82",
+  face: "soft",
+  expression: "neutral",
+  hairStyle: "short",
+  hairColor: "#2E2523",
+  outfit: "shirt",
+  outfitColor: "#4F65C8",
+  accessory: "none",
+  backgroundColor: "#F7F3E8",
+};
+
+export const DEFAULT_AVATAR_APPEARANCES: Readonly<Record<string, AvatarAppearance>> = {
+  planner: {
+    version: 1,
+    skinTone: "#E7AD82",
+    face: "soft",
+    expression: "focused",
+    hairStyle: "short",
+    hairColor: "#2E2523",
+    outfit: "jacket",
+    outfitColor: "#4F65C8",
+    accessory: "glasses",
+    backgroundColor: "#EAF0F6",
+  },
+  researcher: {
+    version: 1,
+    skinTone: "#C98762",
+    face: "round",
+    expression: "friendly",
+    hairStyle: "curly",
+    hairColor: "#8C5A3C",
+    outfit: "sweater",
+    outfitColor: "#45A086",
+    accessory: "headset",
+    backgroundColor: "#E8F3EC",
+  },
+  developer: {
+    version: 1,
+    skinTone: "#75452F",
+    face: "angular",
+    expression: "focused",
+    hairStyle: "shaved",
+    hairColor: "#5B392A",
+    outfit: "hoodie",
+    outfitColor: "#293235",
+    accessory: "none",
+    backgroundColor: "#E7ECEB",
+  },
+  tester: {
+    version: 1,
+    skinTone: "#F6D0B1",
+    face: "round",
+    expression: "friendly",
+    hairStyle: "bun",
+    hairColor: "#D8B56D",
+    outfit: "shirt",
+    outfitColor: "#D98268",
+    accessory: "glasses",
+    backgroundColor: "#FFF0E6",
+  },
+  reviewer: {
+    version: 1,
+    skinTone: "#4A2A21",
+    face: "soft",
+    expression: "neutral",
+    hairStyle: "long",
+    hairColor: "#EFE7D7",
+    outfit: "jacket",
+    outfitColor: "#9278BE",
+    accessory: "cap",
+    backgroundColor: "#F0EAF5",
+  },
+};
+
+/** Return a fresh object so editing one agent cannot mutate a preset. */
+export function defaultAvatarAppearance(agentId: string): AvatarAppearance {
+  return {
+    ...(DEFAULT_AVATAR_APPEARANCES[agentId] ?? DEFAULT_AVATAR_APPEARANCE),
+  };
+}
+
 export function defaults(cwd: string): Config {
-  const roles = [
+  const roles: Array<[string, string, string, Agent["area"], string]> = [
     [
       "planner",
       "Planner",
@@ -44,6 +133,7 @@ export function defaults(cwd: string): Config {
       role: name,
       area: area as Agent["area"],
       avatar,
+      appearance: defaultAvatarAppearance(id),
       cli: "codex",
       args: ["exec", "--model", "{model}", "{prompt}"],
       model: "gpt-5.6-luna",

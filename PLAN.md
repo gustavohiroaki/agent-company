@@ -187,3 +187,18 @@ As duas fases foram concluídas com fixtures locais determinísticas. Nenhuma in
 - `npx tsx tests/browser.mjs` passou em Chromium com raiz temporária e sem chamadas de IA. Cobriu edição, save/reload, workflow, execução real, output, resultado, timeline, Stop, restart de etapa ativa, restart completo, bloqueio de edição durante run, IDs únicos e viewport de 390 px nas quatro telas.
 - Evidência detalhada e comandos reproduzíveis estão em `docs/VALIDATION.md`; capturas finais estão em `artifacts/validation-desktop.png` e `artifacts/validation-mobile.png` (diretório ignorado pelo git).
 - Limite da evidência: o fixture prova a integração local; autenticação, permissões e disponibilidade de Codex/Claude ou outro provedor dependem do ambiente do usuário e não foram exercitadas automaticamente.
+
+## Criador de avatares vetoriais — concluído
+
+Solicitado em 20/09/2026. A extensão deve preservar configurações existentes e não alterar runner, workflows ou estados reais de execução.
+
+- [x] Adicionar aparência versionada e opcional ao contrato de agente, mantendo as iniciais atuais como fallback compatível.
+- [x] Validar e persistir somente peças e cores permitidas, sem aceitar SVG arbitrário ou depender de rede.
+- [x] Renderizar o mesmo boneco vetorial como retrato e como figura de escritório.
+- [x] Criar editor visual com prévia, rosto, cabelo, roupa, acessório, cores, presets, aleatorização, restauração, aplicar e cancelar.
+- [x] Manter nome e status textuais, foco visível, navegação por teclado, responsividade a 390 px e movimento reduzido.
+- [x] Cobrir round-trip, configuração legada e valores inválidos por testes de backend.
+- [x] Validar independentemente no navegador criação, cancelamento, persistência após recarga, retrato, figura e fallback legado.
+- [x] Executar `npm test`, `npm run build` e `npx tsx tests/browser.mjs`; registrar evidências e limitações reais.
+
+Evidência final: `npm test` passou com **52/52**, `npm run build` passou e `npx tsx tests/browser.mjs` passou em Chromium isolado, desktop e 390 px. Um Luna Max independente ampliou o teste de navegador e comprovou Cancelar, foco e Escape, Aplicar, salvamento aceito pelo servidor, recarga, retrato, figura, fallback legado e movimento reduzido. Capturas finais foram inspecionadas em `artifacts/validation-desktop.png` e `artifacts/validation-mobile.png`. Nenhuma rede ou chamada de IA foi usada pelos avatares ou pela validação.

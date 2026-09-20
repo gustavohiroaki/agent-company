@@ -42,6 +42,20 @@ describe('Store persistence', () => {
     assert.equal((await YAML.parse(await readFile(path.join(root, '.agent-office', 'workflows', 'feature.yaml'), 'utf8'))).id, 'feature');
   });
 
+  it('ships deterministic avatar appearances for the standard team', async () => {
+    const root = await tempRoot();
+    const first = defaults(root);
+    const second = defaults(root);
+
+    assert.ok(first.agents.every((agent) => agent.appearance));
+    assert.deepEqual(
+      first.agents.map((agent) => agent.appearance),
+      second.agents.map((agent) => agent.appearance),
+    );
+    assert.notEqual(first.agents[0].appearance, first.agents[1].appearance);
+    assert.doesNotThrow(() => validateConfig(first));
+  });
+
   it('round-trips YAML, markdown instructions, nested transitions, and agent args', async () => {
     const root = await tempRoot();
     const store = new Store(root);
@@ -62,6 +76,41 @@ describe('Store persistence', () => {
     const index = YAML.parse(await readFile(path.join(root, '.agent-office', 'team.yaml'), 'utf8'));
     assert.equal(index.agents[0].instructions, undefined);
     assert.deepEqual(index.workflowIds, original.workflows.map(w => w.id));
+  });
+
+  it('round-trips an explicit versioned avatar appearance through YAML', async () => {
+    const root = await tempRoot();
+    const store = new Store(root);
+    const original = defaults(root);
+    original.agents[0].appearance = {
+      ...original.agents[0].appearance!,
+      version: 1,
+      expression: 'friendly',
+      hairStyle: 'long',
+      accessory: 'headset',
+      backgroundColor: '#E8F3EC',
+    };
+
+    await store.save(original);
+    const loaded = await store.load();
+
+    assert.deepEqual(loaded.agents[0].appearance, original.agents[0].appearance);
+    const index = YAML.parse(await readFile(path.join(root, '.agent-office', 'team.yaml'), 'utf8'));
+    assert.deepEqual(index.agents[0].appearance, original.agents[0].appearance);
+  });
+
+  it('accepts and preserves an older agent without an appearance', async () => {
+    const root = await tempRoot();
+    const store = new Store(root);
+    const legacy = defaults(root);
+    delete legacy.agents[0].appearance;
+
+    assert.doesNotThrow(() => validateConfig(legacy));
+    await store.save(legacy);
+    const loaded = await store.load();
+
+    assert.equal(loaded.agents[0].appearance, undefined);
+    assert.ok(loaded.agents[1].appearance);
   });
 
   it('removes unreferenced agent and workflow files after a save', async () => {
@@ -185,6 +234,26 @@ describe('validateConfig', () => {
   it('accepts the shipped defaults', async () => {
     const root = await tempRoot();
     assert.doesNotThrow(() => validateConfig(defaults(root)));
+  });
+
+  it('rejects unknown avatar parts, colors, versions, and extra fields', async () => {
+    const root = await tempRoot();
+
+    const invalidFace = defaults(root);
+    (invalidFace.agents[0].appearance as unknown as Record<string, unknown>).face = '<svg />';
+    expectInvalid(invalidFace, /face inválido/i);
+
+    const invalidColor = defaults(root);
+    (invalidColor.agents[0].appearance as unknown as Record<string, unknown>).hairColor = '#ffffff';
+    expectInvalid(invalidColor, /hairColor inválido/i);
+
+    const invalidVersion = defaults(root);
+    (invalidVersion.agents[0].appearance as unknown as Record<string, unknown>).version = 2;
+    expectInvalid(invalidVersion, /version inválida/i);
+
+    const extraField = defaults(root);
+    (extraField.agents[0].appearance as unknown as Record<string, unknown>).svg = '<svg />';
+    expectInvalid(extraField, /campos inválidos/i);
   });
 
   it('rejects duplicate, malformed, and reserved IDs', async () => {

@@ -26,6 +26,7 @@ npm start
 
 1. Em **Projects**, defina o caminho absoluto do repositório, regras, equipe e workflow padrão.
 2. Em **Team**, configure o executável e argumentos de cada agente. O CLI precisa estar instalado e autenticado no ambiente que inicia o servidor.
+   No perfil do agente, **Montar boneco** abre o criador de avatar local. Escolha um preset ou combine rosto, expressão, cabelo, roupa, acessório e cores; aplique o boneco e use **Salvar mudanças** para persistir. Configurações antigas continuam exibindo as iniciais como fallback.
 3. Em **Workflow**, escolha os agentes, instruções e destinos de cada status. `done` encerra com sucesso; `error` encerra com erro. Etapas de teste exigem `PASS` ou `FAIL` no resultado; saída zero sozinha produz `DONE`.
 4. Em **Run**, descreva a tarefa e inicie. Clique nos agentes para ver saída, mensagens e arquivos declarados pelo CLI. A timeline registra transições reais.
 

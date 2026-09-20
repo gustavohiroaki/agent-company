@@ -4,7 +4,7 @@ Validado em 20 de setembro de 2026 com `AGENT_OFFICE_ROOT` temporário, fixtures
 
 Comandos finais:
 
-- `npm test` — 48 testes passaram, 0 falharam.
+- `npm test` — 52 testes passaram, 0 falharam.
 - `npm run build` — verificação TypeScript e build de produção Vite passaram.
 - `npx tsx tests/browser.mjs` — passou; o script cria servidor e raiz temporários, usa Chromium, executa fixtures locais e limpa os recursos ao terminar.
 - `npx tsx --test --test-name-pattern='stop kills descendants that ignore SIGTERM' tests/runner.test.ts` repetido 20 vezes após a correção — 20/20 passaram na validação independente.
@@ -22,6 +22,19 @@ A rodada Chromium usa desktop em 1440×1000 e mobile em 390×844. A cobertura P2
 - nomes acessíveis em controles, região `aria-live`, foco visível por teclado, contraste calculado de texto normal ≥ 4,5:1 nos elementos operacionais verificados, zoom 200%, `prefers-reduced-motion` e ausência de overflow horizontal em Run, Projects, Team e Workflow;
 - edição de dois agentes, argumentos JSON inválidos preservando o rascunho parcial, criação de projeto, equipe e workflow, salvamento/reload, conflito stale entre abas e falha HTTP de save preservando draft e erro;
 - bloqueio de edição durante execução, controles desabilitados para agente aguardando, Stop, restart da etapa ativa com novo PID, restart completo do workflow, histórico v2 com IDs de run/tentativas/configuração e remoção de agente não referenciado.
+
+### Criador de avatares vetoriais
+
+A rodada independente foi ampliada para cobrir o criador local de bonecos:
+
+- abertura pelo perfil em Team, prévia ao vivo, presets, peças, paletas, Cancelar sem alterar o rascunho e Aplicar alterando o rascunho;
+- foco inicial no diálogo, retenção de foco com Tab/Shift+Tab e fechamento por Escape;
+- salvamento pela rota real de configuração, aceitação da aparência validada pelo servidor e preservação após recarga;
+- retrato ilustrado em Team e no inspetor, figura ilustrada dentro da sala e iniciais para agente legado sem `appearance`;
+- editor sem overflow horizontal em 390 px e animação do agente ativo desabilitada sob `prefers-reduced-motion`;
+- testes de Store para presets determinísticos, round-trip YAML, configuração legada e rejeição de versão, peça, cor ou campo arbitrário.
+
+Os avatares são SVGs compostos internamente e não fazem chamadas de rede ou de IA. A validação não cobre upload de imagem ou SVG externo porque essas capacidades não fazem parte do recurso.
 
 As capturas finais estão em [desktop](/home/gustavohiroaki/Documentos/ChatGPT/agent-company/artifacts/validation-desktop.png) e [mobile](/home/gustavohiroaki/Documentos/ChatGPT/agent-company/artifacts/validation-mobile.png).
 
